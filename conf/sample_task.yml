@@ -1,0 +1,20 @@
+version: 1
+
+defaults:
+  region: ap-northeast-1
+
+targets:
+  profiles: 
+    [
+      # 空なら~/.aws/configから自動取得
+      "SAMPLE_PROFILE" 
+    ]
+  exclude:
+    # - EXCLUDE_PROFILE
+
+cmd:
+  - name: check-sts
+    run: ["sts", "get-caller-identity"]
+
+  - name: list-s3
+    run: ["s3api", "list-buckets"]

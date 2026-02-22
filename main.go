@@ -1,54 +1,146 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
-var (
-	version = "dev"
-	commit  = "none"
-	date    = "unknown"
-)
-
-const defaultRegion = "ap-northeast-1"
+type Config struct {
+	Version  int `yaml:"version"`
+	Defaults struct {
+		Region string `yaml:"region"`
+	} `yaml:"defaults"`
+	Targets struct {
+		Profiles []string `yaml:"profiles"`
+		Exclude  []string `yaml:"exclude"`
+	} `yaml:"targets"`
+	Cmd []struct {
+		Name string   `yaml:"name"`
+		Run  []string `yaml:"run"`
+	} `yaml:"cmd"`
+}
 
 func main() {
 	if len(os.Args) < 2 {
-		usage()
-		return
+		fmt.Println("usage: necro <config-file>")
+		os.Exit(1)
 	}
 
-	switch os.Args[1] {
-	case "hello":
-		fmt.Println("necro: hello")
+	cfgPath := os.Args[1]
 
-	case "version":
-		fmt.Printf("necro %s (commit=%s, date=%s)\n", version, commit, date)
-
-	case "doctor":
-		profile := getProfile()
-		if profile == "" {
-			exit("doctor requires --profile")
-		}
-		runAWS(profile, defaultRegion, []string{"sts", "get-caller-identity"})
-
-	case "s3":
-		profile := getProfile()
-		if profile == "" {
-			exit("s3 requires --profile")
-		}
-		runAWS(profile, defaultRegion, []string{"s3api", "list-buckets"})
-
-	case "help", "-h", "--help":
-		usage()
-
-	default:
-		exit("unknown command")
+	cfgData, err := os.ReadFile(cfgPath)
+	if err != nil {
+		panic(err)
 	}
+
+	var cfg Config
+	if err := yaml.Unmarshal(cfgData, &cfg); err != nil {
+		panic(err)
+	}
+
+	region := cfg.Defaults.Region
+	if region == "" {
+		region = "ap-northeast-1"
+	}
+
+	profiles := cfg.Targets.Profiles
+	if len(profiles) == 0 {
+		fmt.Println("No profiles specified. Loading from ~/.aws/config ...")
+		profiles = loadProfilesFromAWSConfig()
+	}
+
+	profiles = applyExclude(profiles, cfg.Targets.Exclude)
+
+	if len(profiles) == 0 {
+		fmt.Println("No profiles to run.")
+		os.Exit(1)
+	}
+
+	// ---- Preview ----
+	fmt.Println("==== TARGET PROFILES ====")
+	for _, p := range profiles {
+		fmt.Println("-", p)
+	}
+
+	fmt.Println("")
+	fmt.Println("==== COMMANDS ====")
+	for _, c := range cfg.Cmd {
+		fmt.Println("-", c.Name)
+	}
+
+	fmt.Print("\nProceed? (y/N): ")
+	var input string
+	fmt.Scanln(&input)
+	if strings.ToLower(input) != "y" {
+		fmt.Println("Cancelled.")
+		os.Exit(0)
+	}
+
+	// ---- Execute ----
+	for _, profile := range profiles {
+		fmt.Println("\n==== PROFILE:", profile, "====")
+
+		for _, c := range cfg.Cmd {
+			fmt.Println("->", c.Name)
+			runAWS(profile, region, c.Run)
+		}
+	}
+}
+
+func applyExclude(profiles, exclude []string) []string {
+	if len(exclude) == 0 {
+		return profiles
+	}
+
+	exSet := make(map[string]struct{})
+	for _, e := range exclude {
+		exSet[e] = struct{}{}
+	}
+
+	var filtered []string
+	for _, p := range profiles {
+		if _, found := exSet[p]; !found {
+			filtered = append(filtered, p)
+		}
+	}
+	return filtered
+}
+
+func loadProfilesFromAWSConfig() []string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+
+	path := filepath.Join(home, ".aws", "config")
+
+	f, err := os.Open(path)
+	if err != nil {
+		fmt.Println("cannot open ~/.aws/config:", err)
+		return nil
+	}
+	defer f.Close()
+
+	var profiles []string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "[profile ") && strings.HasSuffix(line, "]") {
+			name := strings.TrimPrefix(line, "[profile ")
+			name = strings.TrimSuffix(name, "]")
+			name = strings.TrimSpace(name)
+			profiles = append(profiles, name)
+		}
+	}
+	return profiles
 }
 
 func runAWS(profile, region string, args []string) {
@@ -71,35 +163,10 @@ func runAWS(profile, region string, args []string) {
 		os.Exit(1)
 	}
 
-	// pretty print JSON
 	var pretty bytes.Buffer
 	if json.Indent(&pretty, out.Bytes(), "", "  ") == nil {
 		fmt.Println(pretty.String())
 	} else {
 		fmt.Println(out.String())
 	}
-}
-
-func getProfile() string {
-	for i, a := range os.Args {
-		if a == "--profile" && i+1 < len(os.Args) {
-			return os.Args[i+1]
-		}
-	}
-	return ""
-}
-
-func usage() {
-	fmt.Println("necro - multi-account AWS helper CLI")
-	fmt.Println("")
-	fmt.Println("Usage:")
-	fmt.Println("  necro doctor --profile <name>")
-	fmt.Println("  necro s3     --profile <name>")
-	fmt.Println("  necro version")
-	fmt.Println("")
-}
-
-func exit(msg string) {
-	fmt.Fprintln(os.Stderr, msg)
-	os.Exit(2)
 }
