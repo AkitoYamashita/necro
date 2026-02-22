@@ -1,6 +1,8 @@
 # necro
 
-necro is a small CLI to orchestrate operations across multiple AWS accounts using AWS SSO profiles.
+necro (Necromancer) is a small CLI to orchestrate operations across multiple AWS accounts using AWS SSO profiles.
+
+![alt text](necro.png)
 
 ## Goals (v0)
 

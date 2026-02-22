@@ -26,3 +26,6 @@ build: build_mac autotest_mac
 release: ## create git tag and push
 	git tag $(VERSION)
 	git push origin $(VERSION)
+unrelease: ## delete git tag and push
+	git tag -d $(VERSION)
+	git push origin :refs/tags/$(VERSION)
