@@ -7,7 +7,6 @@ DATEID=$(date +%Y%m%d%H%M%S)
 [ -e $BASE/_.sh ] && source $BASE/_.sh
 cd $BASE
 
-./dist/necro doctor --profile SAMPLE_PROFILE
+./dist/necro conf/sample_task1.yml --dry-run
 
 echo "complete"
-

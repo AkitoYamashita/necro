@@ -4,8 +4,9 @@
 !/test/sample_script*.sh
 
 /conf/*
-!/conf/sample_task*.yml
 !/conf/sample_aws_config
+!/conf/sample_task*.yml
+!/conf/sample_task3/sample_task3.yml
 
 /dist/*
 !/dist/.gitkeep

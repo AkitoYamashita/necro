@@ -9,8 +9,15 @@ targets:
     - SAMPLE_PROFILE
 
 vars:
-  envMap:
-    XXX_PRD: xxx
+  defaults:
+    SYSTEM: unknown
+    ENV: unknown
+    
+  profiles:
+    XXX_PRD:
+      SYSTEM: xxx
+      ENV: prd
+
 
 cmd:
   - name: check-sts
@@ -18,14 +25,3 @@ cmd:
 
   - name: list-s3
     run: ["s3api", "list-buckets"]
-
-  - name: create-s3bucket
-    run:
-      [
-        "s3api",
-        "create-bucket",
-        "--bucket",
-        "s3-${ENV}-bucket-${ACCOUNT_ID}",
-        "--create-bucket-configuration",
-        "LocationConstraint=${REGION}",
-      ]
