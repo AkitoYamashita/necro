@@ -4,6 +4,7 @@ SHELL=/usr/bin/env bash
 ## var
 BASE:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 DATEID:=$(shell date +%Y%m%d%H%M%S)
+VERSION:=v0.1.0
 ## README
 .DEFAULT_GOAL := readme
 define README
@@ -22,3 +23,6 @@ build_mac:
 autotest_mac:
 	@chmod +x ./test/script.sh && ./test/script.sh
 build: build_mac autotest_mac
+release: ## create git tag and push
+	git tag $(VERSION)
+	git push origin $(VERSION)
