@@ -19,6 +19,6 @@ build_win:
 	@GOOS=windows GOARCH=amd64 go build -ldflags "-s -w -X main.version=dev -X main.commit=local -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o dist/necro_windows_amd64.exe .
 build_mac:
 	@go build -ldflags "-s -w -X main.version=dev -X main.commit=$(git rev-parse --short HEAD) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o dist/necro .
-autotest:
-	chmod +x ./test/script.sh && ./test/script.sh
-build: build_mac autotest
+autotest_mac:
+	@chmod +x ./test/script.sh && ./test/script.sh
+build: build_mac autotest_mac

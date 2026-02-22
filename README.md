@@ -27,6 +27,7 @@ chmod +x necro_darwin_arm64
 ## Quick start
 
 ```bash
+aws sso login --profile [SAMPLE_PROFILE]
 necro version
 necro hello
 ```
