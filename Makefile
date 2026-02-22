@@ -15,9 +15,10 @@ readme: # @hide
 	@printf "\033[1;31m==== [Makefile] ====\033[0m\n"
 	@grep -E '^[^#[:space:]].*:[[:space:]]*(#.*)?$$' Makefile | awk '/@hide$$/ {next} {sub(/#.*/, "\033[90m&\033[0m")}1'
 	#@if [ -f other/Makefile ]; then echo; echo "[other/Makefile]"; grep -E '^[^#[:space:]].*:[[:space:]]*(#.*)?$$' other/Makefile; fi
-color: # terminal color
-	@for i in $$(seq 30 37) $$(seq 90 97); do printf "\033[$${i}m m$${i} \033[0m "; done; echo
-gip: # global ip
-	curl checkip.amazonaws.com
 build_win:
 	@GOOS=windows GOARCH=amd64 go build -ldflags "-s -w -X main.version=dev -X main.commit=local -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o dist/necro_windows_amd64.exe .
+build_mac:
+	@go build -ldflags "-s -w -X main.version=dev -X main.commit=$(git rev-parse --short HEAD) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o dist/necro .
+autotest:
+	chmod +x ./test/script.sh && ./test/script.sh
+build: build_mac autotest
