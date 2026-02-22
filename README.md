@@ -26,11 +26,47 @@ chmod +x necro_darwin_arm64
 
 ## Quick start
 
-```bash
-aws sso login --profile [SAMPLE_PROFILE]
-necro version
-necro hello
-```
+### 1. Prepare AWS config (SSO)
+
+Use the sample config as a reference:
+
+    conf/sample_aws_config
+
+Create or update:
+
+    ~/.aws/config
+
+Then login:
+
+    aws sso login --profile SAMPLE_PROFILE
+
+### 2. Prepare task config
+
+Use the sample task file:
+
+    conf/sample_task.yml
+
+Copy it and adjust for your environment:
+
+    cp conf/sample_task.yml conf/task1.yml
+
+Edit:
+
+    conf/task1.yml
+
+### 3. Run necro
+
+Check build info:
+
+    necro version
+
+Dry run (see planned commands only):
+
+    necro conf/task1.yml --dry-run
+
+Execute:
+
+    necro conf/task1.yml
 
 ## Requirements
 
