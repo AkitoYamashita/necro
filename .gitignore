@@ -1,10 +1,11 @@
 # .gitignore
 
 /test/*
-!/test/sample_script.sh
+!/test/sample_script*.sh
 
 /conf/*
-!/conf/sample_task.yml
+!/conf/sample_task*.yml
+!/conf/sample_aws_config
 
 /dist/*
 !/dist/.gitkeep

@@ -22,6 +22,9 @@ type Config struct {
 		Profiles []string `yaml:"profiles"`
 		Exclude  []string `yaml:"exclude"`
 	} `yaml:"targets"`
+	Vars struct {
+		EnvMap map[string]string `yaml:"envMap"`
+	} `yaml:"vars"`
 	Cmd []struct {
 		Name string   `yaml:"name"`
 		Run  []string `yaml:"run"`
@@ -30,11 +33,15 @@ type Config struct {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("usage: necro <config-file>")
+		fmt.Println("usage: necro <config-file> [--dry-run]")
 		os.Exit(1)
 	}
 
 	cfgPath := os.Args[1]
+	dryRun := false
+	if len(os.Args) > 2 && os.Args[2] == "--dry-run" {
+		dryRun = true
+	}
 
 	cfgData, err := os.ReadFile(cfgPath)
 	if err != nil {
@@ -53,7 +60,6 @@ func main() {
 
 	profiles := cfg.Targets.Profiles
 	if len(profiles) == 0 {
-		fmt.Println("No profiles specified. Loading from ~/.aws/config ...")
 		profiles = loadProfilesFromAWSConfig()
 	}
 
@@ -64,42 +70,90 @@ func main() {
 		os.Exit(1)
 	}
 
-	// ---- Preview ----
 	fmt.Println("==== TARGET PROFILES ====")
 	for _, p := range profiles {
 		fmt.Println("-", p)
 	}
 
-	fmt.Println("")
-	fmt.Println("==== COMMANDS ====")
+	fmt.Println("\n==== COMMANDS ====")
 	for _, c := range cfg.Cmd {
 		fmt.Println("-", c.Name)
 	}
 
-	fmt.Print("\nProceed? (y/N): ")
-	var input string
-	fmt.Scanln(&input)
-	if strings.ToLower(input) != "y" {
-		fmt.Println("Cancelled.")
-		os.Exit(0)
+	if dryRun {
+		fmt.Println("\n==== DRY RUN PLAN ====")
 	}
 
-	// ---- Execute ----
 	for _, profile := range profiles {
-		fmt.Println("\n==== PROFILE:", profile, "====")
+		accountID := getAccountID(profile, region)
+		env := cfg.Vars.EnvMap[profile]
 
 		for _, c := range cfg.Cmd {
-			fmt.Println("->", c.Name)
-			runAWS(profile, region, c.Run)
+			finalArgs := buildCommand(profile, region, accountID, env, c.Run)
+
+			if dryRun {
+				fmt.Println(strings.Join(finalArgs, " "))
+				continue
+			}
+
+			runAWS(finalArgs)
 		}
+	}
+
+	if dryRun {
+		os.Exit(0)
 	}
 }
 
-func applyExclude(profiles, exclude []string) []string {
-	if len(exclude) == 0 {
-		return profiles
+func buildCommand(profile, region, accountID, env string, args []string) []string {
+	full := []string{
+		"aws",
+		"--profile", profile,
+		"--region", region,
+		"--output", "json",
 	}
 
+	for _, a := range args {
+		a = strings.ReplaceAll(a, "${PROFILE}", profile)
+		a = strings.ReplaceAll(a, "${ACCOUNT_ID}", accountID)
+		a = strings.ReplaceAll(a, "${REGION}", region)
+		a = strings.ReplaceAll(a, "${ENV}", env)
+		full = append(full, a)
+	}
+
+	return full
+}
+
+func getAccountID(profile, region string) string {
+	cmd := exec.Command("aws",
+		"--profile", profile,
+		"--region", region,
+		"--output", "json",
+		"sts", "get-caller-identity",
+	)
+
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err := cmd.Run()
+	if err != nil {
+		return ""
+	}
+
+	var data struct {
+		Account string `json:"Account"`
+	}
+	_ = json.Unmarshal(out.Bytes(), &data)
+	return data.Account
+}
+
+func runAWS(full []string) {
+	cmd := exec.Command(full[0], full[1:]...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	_ = cmd.Run()
+}
+
+func applyExclude(profiles, exclude []string) []string {
 	exSet := make(map[string]struct{})
 	for _, e := range exclude {
 		exSet[e] = struct{}{}
@@ -115,16 +169,11 @@ func applyExclude(profiles, exclude []string) []string {
 }
 
 func loadProfilesFromAWSConfig() []string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil
-	}
-
+	home, _ := os.UserHomeDir()
 	path := filepath.Join(home, ".aws", "config")
 
 	f, err := os.Open(path)
 	if err != nil {
-		fmt.Println("cannot open ~/.aws/config:", err)
 		return nil
 	}
 	defer f.Close()
@@ -141,32 +190,4 @@ func loadProfilesFromAWSConfig() []string {
 		}
 	}
 	return profiles
-}
-
-func runAWS(profile, region string, args []string) {
-	full := []string{
-		"--profile", profile,
-		"--region", region,
-		"--output", "json",
-	}
-	full = append(full, args...)
-
-	cmd := exec.Command("aws", full...)
-	var out bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
-	if err != nil {
-		fmt.Println(stderr.String())
-		os.Exit(1)
-	}
-
-	var pretty bytes.Buffer
-	if json.Indent(&pretty, out.Bytes(), "", "  ") == nil {
-		fmt.Println(pretty.String())
-	} else {
-		fmt.Println(out.String())
-	}
 }

@@ -4,13 +4,13 @@ defaults:
   region: ap-northeast-1
 
 targets:
-  profiles: 
-    [
-      # 空なら~/.aws/configから自動取得
-      "SAMPLE_PROFILE" 
-    ]
+  profiles: [] # 空なら ~/.aws/config から自動取得
   exclude:
-    # - EXCLUDE_PROFILE
+    - SAMPLE_PROFILE
+
+vars:
+  envMap:
+    XXX_PRD: xxx
 
 cmd:
   - name: check-sts
@@ -18,3 +18,14 @@ cmd:
 
   - name: list-s3
     run: ["s3api", "list-buckets"]
+
+  - name: create-s3bucket
+    run:
+      [
+        "s3api",
+        "create-bucket",
+        "--bucket",
+        "s3-${ENV}-bucket-${ACCOUNT_ID}",
+        "--create-bucket-configuration",
+        "LocationConstraint=${REGION}",
+      ]
