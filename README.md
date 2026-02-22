@@ -15,10 +15,21 @@ necro is a small CLI to orchestrate operations across multiple AWS accounts usin
 
 Download necro_windows_amd64.exe from GitHub Releases and run it.
 
+## Mac ※arm64 for MacBookPro(M2)
+
+Download necro_darwin_arm64 from GitHub Releases and run it.
+
+```bash
+xattr -d com.apple.quarantine necro_darwin_arm64
+chmod +x necro_darwin_arm64
+```
+
 ## Quick start
 
-    necro version
-    necro hello
+```bash
+necro version
+necro hello
+```
 
 ## Requirements
 
