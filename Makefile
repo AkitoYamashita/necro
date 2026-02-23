@@ -21,7 +21,7 @@ build_win:
 build_mac:
 	@go build -ldflags "-s -w -X main.version=dev -X main.commit=$(git rev-parse --short HEAD) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o dist/necro .
 autotest_mac:
-	@chmod +x ./test/script.sh && ./test/script.sh
+	@chmod +x ./conf/script_run.sh && ./conf/script_run.sh
 build: build_mac autotest_mac
 release: ## create git tag and push
 	git tag $(VERSION)
@@ -29,3 +29,5 @@ release: ## create git tag and push
 unrelease: ## delete git tag and push
 	git tag -d $(VERSION)
 	git push origin :refs/tags/$(VERSION)
+login:
+	aws sso login --profile COM_PRD

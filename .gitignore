@@ -1,15 +1,15 @@
 # .gitignore
 
-/test/*
-!/test/sample_script*.sh
-
 /conf/*
-!/conf/sample_aws_config
-!/conf/sample_task*.yml
-!/conf/sample_task3/sample_task3.yml
+!/conf/config_sample
+!/conf/script_run_sample*.sh
+!/conf/task*_sample.yml
 
 /dist/*
 !/dist/.gitkeep
+
+/log/*
+!/log/.gitkeep
 
 /.vscode
 

@@ -8,20 +8,10 @@ targets:
   exclude:
     - SAMPLE_PROFILE
 
-vars:
-  defaults:
-    SYSTEM: unknown
-    ENV: unknown
-    
-  profiles:
-    XXX_PRD:
-      SYSTEM: xxx
-      ENV: prd
-
-
 cmd:
-  - name: check-sts
-    run: ["sts", "get-caller-identity"]
+  ## 内部で自動実行
+  # - name: check-sts
+  #   run: ["sts", "get-caller-identity"]
 
   - name: list-s3
     run: ["s3api", "list-buckets"]

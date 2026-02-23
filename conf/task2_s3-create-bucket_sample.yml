@@ -10,8 +10,6 @@ targets:
 
 vars:
   defaults:
-    SYSTEM: unknown
-    ENV: unknown
     BUCKET_NAME: s3-${SYSTEM}-${ENV}-necro-artifact
 
   profiles:
@@ -20,6 +18,7 @@ vars:
       ENV: prd
 
 cmd:
+
   - name: necro-artifact-s3bucket-create
     run:
       [

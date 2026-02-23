@@ -43,6 +43,9 @@ var (
 var reVar = regexp.MustCompile(`\$\{([A-Z0-9_]+)\}`)
 
 func main() {
+	if handleSubcommand(os.Args) {
+		return
+	}
 	cfgPath, dryRun := parseArgs(os.Args)
 	if cfgPath == "" {
 		usage()
@@ -96,10 +99,17 @@ func main() {
 	}
 
 	// ---- Execute/Plan ----
-	for _, profile := range profiles {
-		accountID := mustGetAccountID(profile, region)
 
-		// Build built-in context (highest priority)
+	// 1) Build ctx cache per profile (STS check happens here once per profile)
+	ctxByProfile := make(map[string]map[string]string, len(profiles))
+
+	for _, profile := range profiles {
+		accountID, _ := mustGetCallerIdentity(profile, region)
+
+		// Show STS OK clearly (also useful in dry-run)
+		fmt.Printf("🔐 STS OK   | profile=%s | account=%s\n", profile, accountID)
+
+		// Built-in context (highest priority)
 		ctx := map[string]string{
 			"PROFILE":    profile,
 			"REGION":     region,
@@ -115,25 +125,49 @@ func main() {
 		}
 
 		// Resolve template references inside ctx values (after merge)
-		ctx, err = resolveContext(ctx)
+		resolved, err := resolveContext(ctx)
 		if err != nil {
 			die(fmt.Errorf("profile %s: %w", profile, err))
 		}
 
-		for _, c := range cfg.Cmd {
+		ctxByProfile[profile] = resolved
+	}
+
+	// 2) Run cmd-by-cmd (gate). cmd1 across all profiles -> cmd2 across all profiles ...
+	for _, c := range cfg.Cmd {
+		if dryRun {
+			fmt.Printf("\n🧪 CMD PLAN | %s\n", c.Name)
+		} else {
+			fmt.Printf("\n🚀 CMD START | %s\n", c.Name)
+		}
+
+		for _, profile := range profiles {
+			ctx := ctxByProfile[profile]
+
 			finalArgs, err := renderAWSArgs(profile, region, c.Run, ctx)
 			if err != nil {
+				fmt.Printf("❌ CMD NG   | %s | profile=%s (render)\n", c.Name, profile)
 				die(fmt.Errorf("profile %s cmd %s: %w", profile, c.Name, err))
 			}
 
 			if dryRun {
+				fmt.Printf("🧪 RUN PLAN | %s | profile=%s\n", c.Name, profile)
 				fmt.Println(strings.Join(finalArgs, " "))
 				continue
 			}
 
-			fmt.Println("\n==== PROFILE:", profile, "====")
-			fmt.Println("->", c.Name)
-			runAWS(finalArgs)
+			fmt.Printf("▶️  RUN      | %s | profile=%s\n", c.Name, profile)
+			if err := runAWSWithError(finalArgs); err != nil {
+				fmt.Printf("❌ RUN NG   | %s | profile=%s\n", c.Name, profile)
+				die(err) // keep original behavior: stop immediately
+			}
+			fmt.Printf("✅ RUN OK   | %s | profile=%s\n", c.Name, profile)
+		}
+
+		if dryRun {
+			fmt.Printf("🧪 CMD DONE | %s\n", c.Name)
+		} else {
+			fmt.Printf("🚀 CMD OK   | %s\n", c.Name)
 		}
 	}
 }
@@ -157,6 +191,7 @@ func usage() {
 	fmt.Printf("necro %s (commit=%s, date=%s)\n", version, commit, date)
 	fmt.Println("")
 	fmt.Println("Usage:")
+	fmt.Println("  necro version")
 	fmt.Println("  necro <config-file> [--dry-run]")
 }
 
@@ -233,6 +268,7 @@ func renderAWSArgs(profile, region string, run []string, ctx map[string]string) 
 	// build final: aws --profile ... --region ... --output json + rendered run args
 	full := []string{
 		"aws",
+		"--no-cli-pager",
 		"--profile", profile,
 		"--region", region,
 		"--output", "json",
@@ -281,8 +317,7 @@ func expandStrict(s string, ctx map[string]string) (string, bool, error) {
 
 	return out, changed, nil
 }
-
-func mustGetAccountID(profile, region string) string {
+func mustGetCallerIdentity(profile, region string) (accountID string, arn string) {
 	// We keep region + output json for consistency.
 	cmd := exec.Command("aws",
 		"--profile", profile,
@@ -296,12 +331,20 @@ func mustGetAccountID(profile, region string) string {
 	cmd.Stdout = &out
 	cmd.Stderr = &stderr
 
+	// suppress interactive behaviors (pager / auto prompt)
+	cmd.Env = append(os.Environ(),
+		"AWS_PAGER=",
+		"AWS_CLI_AUTO_PROMPT=off",
+	)
+
 	if err := cmd.Run(); err != nil {
+		fmt.Printf("❌ STS NG   | profile=%s\n", profile)
 		die(fmt.Errorf("sts failed for %s: %s", profile, strings.TrimSpace(stderr.String())))
 	}
 
 	var data struct {
 		Account string `json:"Account"`
+		Arn     string `json:"Arn"`
 	}
 	if err := json.Unmarshal(out.Bytes(), &data); err != nil {
 		die(fmt.Errorf("sts json parse failed for %s: %v", profile, err))
@@ -309,16 +352,25 @@ func mustGetAccountID(profile, region string) string {
 	if strings.TrimSpace(data.Account) == "" {
 		die(fmt.Errorf("sts returned empty Account for %s", profile))
 	}
-	return data.Account
+	if strings.TrimSpace(data.Arn) == "" {
+		die(fmt.Errorf("sts returned empty Arn for %s", profile))
+	}
+
+	return data.Account, data.Arn
 }
 
-func runAWS(full []string) {
+func runAWSWithError(full []string) error {
 	cmd := exec.Command(full[0], full[1:]...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		os.Exit(1)
-	}
+
+	// suppress interactive behaviors (pager / auto prompt)
+	cmd.Env = append(os.Environ(),
+		"AWS_PAGER=",
+		"AWS_CLI_AUTO_PROMPT=off",
+	)
+
+	return cmd.Run()
 }
 
 func loadProfilesFromAWSConfig() []string {
@@ -383,4 +435,22 @@ func dieIf(err error) {
 func die(err error) {
 	fmt.Fprintln(os.Stderr, "error:", err)
 	os.Exit(1)
+}
+
+func handleSubcommand(args []string) bool {
+	// subcommands: version, help
+	if len(args) < 2 {
+		return false
+	}
+
+	switch args[1] {
+	case "version":
+		fmt.Printf("necro %s (commit=%s, date=%s)\n", version, commit, date)
+		return true
+	case "help", "-h", "--help":
+		usage()
+		return true
+	default:
+		return false
+	}
 }

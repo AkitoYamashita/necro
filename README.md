@@ -81,6 +81,5 @@ Execute:
 ## Roadmap
 
 - YAML config runner (targets + steps) with --output json enforced
-- doctor: check SSO cache with sts get-caller-identity across targets
 - run/apply: execute AWS CLI steps across targets with region overrides
 - report: JSON summary output
