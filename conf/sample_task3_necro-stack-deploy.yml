@@ -27,6 +27,7 @@ cmd:
   - name: necro-artifact-s3bucket-check
     run: ["s3api", "head-bucket", "--bucket", "${BUCKET_NAME}"]
 
+  # テンプレートアップロード
   - name: necro-assume-role-template-upload
     run:
       [
@@ -36,6 +37,7 @@ cmd:
         "s3://${BUCKET_NAME}/${TEMPLATE_S3_KEY}",
       ]
 
+  # 作成/更新
   - name: necro-assume-role-stack-deploy
     run:
       [
@@ -51,3 +53,23 @@ cmd:
         "RoleName=${ROLE_NAME}",
         "BucketName=${BUCKET_NAME}"
       ]
+
+  # 削除
+  # - name: necro-assume-role-stack-delete
+  #   run:
+  #     [
+  #       "cloudformation",
+  #       "delete-stack",
+  #       "--stack-name",
+  #       "${STACK_NAME}",
+  #     ]
+
+  # - name: necro-assume-role-stack-wait-delete
+  #   run:
+  #     [
+  #       "cloudformation",
+  #       "wait",
+  #       "stack-delete-complete",
+  #       "--stack-name",
+  #       "${STACK_NAME}",
+  #     ]
