@@ -83,22 +83,26 @@ func main() {
 		os.Exit(1)
 	}
 
-	// ---- Log file (single file per run) ----
+	// ---------- Log setup ----------
 	runID := newRunID()
-	dieIf(os.MkdirAll("log", 0755))
+
+	_ = os.MkdirAll("log", 0755)
 	logPath := filepath.Join("log", runID+".txt")
 
 	logFile, err := os.Create(logPath)
 	dieIf(err)
 	defer logFile.Close()
 
-	// write to console + log file
 	mw := io.MultiWriter(os.Stdout, logFile)
 
 	fmt.Fprintf(mw, "🧾 LOG FILE | %s\n", logPath)
 	fmt.Fprintf(mw, "🆔 RUN ID   | %s\n", runID)
 
-	// ---- Preview ----
+	// ---------- Global start time ----------
+	runStart := time.Now()
+	fmt.Fprintf(mw, "🕒 START    | %s\n", runStart.Format(time.RFC3339))
+
+	// ---------- Preview ----------
 	fmt.Fprintln(mw, "\n==== TARGET PROFILES ====")
 	for _, p := range profiles {
 		fmt.Fprintln(mw, "-", p)
@@ -112,19 +116,17 @@ func main() {
 	if dryRun {
 		fmt.Fprintln(mw, "\n==== DRY RUN PLAN ====")
 	} else {
-		// Proceed prompt should be console-only (avoid polluting log with user input)
 		if !confirmProceed() {
 			fmt.Fprintln(mw, "Cancelled.")
-			os.Exit(0)
+			return
 		}
 	}
 
-	// ---- Execute/Plan ----
-	// 1) Build ctx cache per profile (STS check happens here once per profile)
+	// ---------- STS check + ctx cache ----------
 	ctxByProfile := make(map[string]map[string]string, len(profiles))
 
 	for _, profile := range profiles {
-		accountID, arn, errText, e := getCallerIdentity(profile, region)
+		accountID, _, errText, e := getCallerIdentity(profile, region)
 		if e != nil {
 			fmt.Fprintf(mw, "❌ STS NG   | profile=%s\n", profile)
 			if errText != "" {
@@ -132,35 +134,32 @@ func main() {
 			}
 			die(e)
 		}
-		_ = arn // keep for future verbose use
 
 		fmt.Fprintf(mw, "🔐 STS OK   | profile=%s | account=%s\n", profile, accountID)
 
-		// Built-in context (highest priority)
 		ctx := map[string]string{
 			"PROFILE":    profile,
 			"REGION":     region,
 			"ACCOUNT_ID": accountID,
 		}
 
-		// Merge vars.defaults (cannot override built-in)
 		mergeVarsNoOverride(ctx, cfg.Vars.Defaults)
 
-		// Merge vars.profiles[PROFILE] (cannot override built-in)
 		if pv, ok := cfg.Vars.Profiles[profile]; ok {
 			mergeVarsNoOverride(ctx, pv)
 		}
 
-		// Resolve template references inside ctx values (after merge)
 		resolved, e := resolveContext(ctx)
 		if e != nil {
 			die(fmt.Errorf("profile %s: %w", profile, e))
 		}
+
 		ctxByProfile[profile] = resolved
 	}
 
-	// 2) Run cmd-by-cmd (gate). cmd1 across all profiles -> cmd2 across all profiles ...
+	// ---------- Execute cmd by cmd ----------
 	for _, c := range cfg.Cmd {
+
 		if dryRun {
 			fmt.Fprintf(mw, "\n🧪 CMD PLAN  | %s\n", c.Name)
 		} else {
@@ -173,7 +172,7 @@ func main() {
 			finalArgs, e := renderAWSArgs(profile, region, c.Run, ctx)
 			if e != nil {
 				fmt.Fprintf(mw, "❌ CMD NG    | %s | profile=%s (render)\n", c.Name, profile)
-				die(fmt.Errorf("profile %s cmd %s: %w", profile, c.Name, e))
+				die(e)
 			}
 
 			if dryRun {
@@ -183,11 +182,19 @@ func main() {
 			}
 
 			fmt.Fprintf(mw, "▶️  RUN       | %s | profile=%s\n", c.Name, profile)
-			if e := runAWSWithError(finalArgs, mw); e != nil {
-				fmt.Fprintf(mw, "❌ RUN NG    | %s | profile=%s\n", c.Name, profile)
-				die(e) // stop immediately
+
+			runCmdStart := time.Now()
+			e = runAWSWithError(finalArgs, mw)
+			runCmdDuration := time.Since(runCmdStart)
+
+			if e != nil {
+				fmt.Fprintf(mw, "❌ RUN NG    | %s | profile=%s | duration=%s\n",
+					c.Name, profile, runCmdDuration)
+				die(e)
 			}
-			fmt.Fprintf(mw, "✅ RUN OK    | %s | profile=%s\n", c.Name, profile)
+
+			fmt.Fprintf(mw, "✅ RUN OK    | %s | profile=%s | duration=%s\n",
+				c.Name, profile, runCmdDuration)
 		}
 
 		if dryRun {
@@ -196,6 +203,13 @@ func main() {
 			fmt.Fprintf(mw, "🚀 CMD OK    | %s\n", c.Name)
 		}
 	}
+
+	// ---------- Global end ----------
+	runEnd := time.Now()
+	totalDuration := runEnd.Sub(runStart)
+
+	fmt.Fprintf(mw, "\n🏁 END      | %s\n", runEnd.Format(time.RFC3339))
+	fmt.Fprintf(mw, "⏱️  TOTAL    | %s\n", totalDuration)
 }
 
 func parseArgs(args []string) (cfgPath string, dryRun bool) {
