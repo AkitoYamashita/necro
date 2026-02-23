@@ -4,7 +4,7 @@ SHELL=/usr/bin/env bash
 ## var
 BASE:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 DATEID:=$(shell date +%Y%m%d%H%M%S)
-VERSION:=v0.1.0
+VERSION:=v1.0.0
 ## README
 .DEFAULT_GOAL := readme
 define README
