@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "necro assume role for artifact bucket access"
+
+Parameters:
+  RoleName:
+    Type: String
+    Description: "IAM role name (e.g. role-com-prd-necro-assume-role)"
+  BucketName:
+    Type: String
+    Description: "Artifact bucket name (e.g. s3-com-prd-necro-artifact)"
+  TrustedAccountId:
+    Type: String
+    Default: "123456789012"
+    AllowedPattern: "^[0-9]{12}$"
+    Description: "Trusted AWS Account ID (root principal) that can assume this role"
+
+Resources:
+  NecroAssumeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowAssumeFromTrustedRoot
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${TrustedAccountId}:root"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: NecroArtifactBucketAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ListBucket
+                Effect: Allow
+                Action:
+                  - "s3:ListBucket"
+                Resource: !Sub "arn:aws:s3:::${BucketName}"
+              - Sid: ObjectRW
+                Effect: Allow
+                Action:
+                  - "s3:GetObject"
+                  - "s3:PutObject"
+                  - "s3:DeleteObject"
+                Resource: !Sub "arn:aws:s3:::${BucketName}/*"
+
+Outputs:
+  RoleArn:
+    Value: !GetAtt NecroAssumeRole.Arn
+  RoleName:
+    Value: !Ref RoleName
+  BucketName:
+    Value: !Ref BucketName
+  TrustedPrincipal:
+    Value: !Sub "arn:aws:iam::${TrustedAccountId}:root"

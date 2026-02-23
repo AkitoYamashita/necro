@@ -1,9 +1,7 @@
 # .gitignore
 
 /conf/*
-!/conf/config_sample
-!/conf/script_run_sample*.sh
-!/conf/task*_sample.yml
+!/conf/sample*
 
 /dist/*
 !/dist/.gitkeep
