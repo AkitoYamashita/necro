@@ -8,6 +8,6 @@ DATEID=$(date +%Y%m%d%H%M%S)
 cd $BASE
 
 ./dist/necro version
-./dist/necro conf/task1_s3-list_sample.yml --dry-run
+./dist/necro conf/task.yml --dry-run
 
 echo "complete"

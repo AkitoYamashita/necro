@@ -1,0 +1,75 @@
+version: 1
+
+defaults:
+  region: ap-northeast-1
+
+targets:
+  profiles: [] # 空なら ~/.aws/config から自動取得
+  exclude:
+    - SAMPLE_PROFILE
+
+vars: # build-in var: PROFILE,REGION,ACCOUNT_ID
+  defaults:
+    ## s3-bucket 
+    BUCKET_NAME: s3-${SYSTEM}-${ENV}-necro-artifact
+    ## s3-file
+    CFN_LOCAL: conf/cfn_stack-SYSTEM-ENV-necro.yml
+    CFN_REMOTE: stack-${SYSTEM}-${ENV}-necro.yml
+
+  profiles:
+    XXX_PRD:
+      SYSTEM: xxx
+      ENV: prd
+
+cmd:
+  ## 内部で自動実行
+  # - name: check-sts
+  #   run: ["sts", "get-caller-identity"]
+
+  ## S3バケット(一覧)
+  # - name: list-s3
+  #   run: ["s3api", "list-buckets"]
+
+  ## S3バケット(作成)
+  # - name: necro-artifact-s3bucket-create
+  #   run:
+  #     [
+  #       "s3api",
+  #       "create-bucket",
+  #       "--bucket",
+  #       "${BUCKET_NAME}",
+  #       "--create-bucket-configuration",
+  #       "LocationConstraint=${REGION}",
+  #     ]
+
+  ## S3バケット(確認)
+  # - name: necro-artifact-s3bucket-check
+  #   run:
+  #     [
+  #       "s3api",
+  #       "head-bucket",
+  #       "--bucket",
+  #       "${BUCKET_NAME}",
+  #     ]
+
+  ## CFNテンプレート(DELETE)
+  # - name: cfn-template-s3-delete
+  #   run:
+  #     [
+  #       "s3api",
+  #       "delete-object",
+  #       "--bucket",
+  #       "${BUCKET_NAME}",
+  #       "--key",
+  #       "${CFN_REMOTE}",
+  #     ]
+
+  ## CFNテンプレート(PUT)
+  # - name: cfn-template-s3-put
+  #   run:
+  #     [
+  #       "s3",
+  #       "cp",
+  #       "${CFN_LOCAL}",
+  #       "s3://${BUCKET_NAME}/${CFN_REMOTE}",
+  #     ]

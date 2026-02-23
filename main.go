@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	gojmespath "github.com/jmespath/go-jmespath"
 	"gopkg.in/yaml.v3"
 )
 
@@ -32,10 +33,23 @@ type Config struct {
 		Defaults map[string]string            `yaml:"defaults"`
 		Profiles map[string]map[string]string `yaml:"profiles"`
 	} `yaml:"vars"`
-	Cmd []struct {
-		Name string   `yaml:"name"`
-		Run  []string `yaml:"run"`
-	} `yaml:"cmd"`
+	Cmd []Cmd `yaml:"cmd"`
+}
+
+type Cmd struct {
+	Name    string            `yaml:"name"`
+	Run     []string          `yaml:"run"`
+	Capture map[string]string `yaml:"capture,omitempty"` // VAR -> JMESPath
+
+	If *IfBlock `yaml:"if,omitempty"`
+	Ok []Cmd    `yaml:"ok,omitempty"`
+	Ng []Cmd    `yaml:"ng,omitempty"`
+}
+
+type IfBlock struct {
+	Expr  string `yaml:"expr"`            // JMESPath against LAST_JSON
+	Op    string `yaml:"op"`              // eq/ne/contains/exists/in
+	Value string `yaml:"value,omitempty"` // rendered by ${VAR} from ctx
 }
 
 var (
@@ -141,6 +155,7 @@ func main() {
 			"PROFILE":    profile,
 			"REGION":     region,
 			"ACCOUNT_ID": accountID,
+			"RUN_ID":     runID,
 		}
 
 		mergeVarsNoOverride(ctx, cfg.Vars.Defaults)
@@ -167,34 +182,13 @@ func main() {
 		}
 
 		for _, profile := range profiles {
+			// profileごとにctxは独立させる（captureで汚染しない）
 			ctx := ctxByProfile[profile]
 
-			finalArgs, e := renderAWSArgs(profile, region, c.Run, ctx)
-			if e != nil {
-				fmt.Fprintf(mw, "❌ CMD NG    | %s | profile=%s (render)\n", c.Name, profile)
-				die(e)
+			if err := runCmdTreeForProfile(mw, dryRun, profile, region, ctx, c); err != nil {
+				// 失敗したら即停止（今まで通り）
+				die(err)
 			}
-
-			if dryRun {
-				fmt.Fprintf(mw, "🧪 RUN PLAN  | %s | profile=%s\n", c.Name, profile)
-				fmt.Fprintln(mw, strings.Join(finalArgs, " "))
-				continue
-			}
-
-			fmt.Fprintf(mw, "▶️  RUN       | %s | profile=%s\n", c.Name, profile)
-
-			runCmdStart := time.Now()
-			e = runAWSWithError(finalArgs, mw)
-			runCmdDuration := time.Since(runCmdStart)
-
-			if e != nil {
-				fmt.Fprintf(mw, "❌ RUN NG    | %s | profile=%s | duration=%s\n",
-					c.Name, profile, runCmdDuration)
-				die(e)
-			}
-
-			fmt.Fprintf(mw, "✅ RUN OK    | %s | profile=%s | duration=%s\n",
-				c.Name, profile, runCmdDuration)
 		}
 
 		if dryRun {
@@ -352,7 +346,7 @@ func expandStrict(s string, ctx map[string]string) (string, bool, error) {
 		j := strings.Index(out[i:], "\x00")
 		miss := out[i : i+j]
 		miss = strings.TrimPrefix(miss, "\x00MISSING:")
-		return "", false, fmt.Errorf("undefined variable: %s", miss)
+		return "", false, fmt.Errorf("undefined variable: %s (in %s)", miss, s)
 	}
 
 	return out, changed, nil
@@ -397,9 +391,13 @@ func getCallerIdentity(profile, region string) (accountID string, arn string, er
 	return data.Account, data.Arn, "", nil
 }
 
-func runAWSWithError(full []string, w io.Writer) error {
+func runAWSAndCapture(full []string, w io.Writer) (stdout []byte, err error) {
 	cmd := exec.Command(full[0], full[1:]...)
-	cmd.Stdout = w
+
+	var outBuf bytes.Buffer
+	// stdout: console+log へ流しつつ、JSONとして捕まえる
+	cmd.Stdout = io.MultiWriter(w, &outBuf)
+	// stderr: console+log へ流す（内容の捕捉は今は不要）
 	cmd.Stderr = w
 
 	// suppress interactive behaviors (pager / auto prompt)
@@ -408,7 +406,10 @@ func runAWSWithError(full []string, w io.Writer) error {
 		"AWS_CLI_AUTO_PROMPT=off",
 	)
 
-	return cmd.Run()
+	if e := cmd.Run(); e != nil {
+		return outBuf.Bytes(), e
+	}
+	return outBuf.Bytes(), nil
 }
 
 func loadProfilesFromAWSConfig() []string {
@@ -504,4 +505,192 @@ func newRunID() string {
 	}
 
 	return ts + "-" + ms + "-" + hex.EncodeToString(b)
+}
+func parseJSONOrNil(b []byte) (any, bool) {
+	s := strings.TrimSpace(string(b))
+	if s == "" {
+		return nil, false
+	}
+	var v any
+	if err := json.Unmarshal([]byte(s), &v); err != nil {
+		return nil, false
+	}
+	return v, true
+}
+func applyCapture(ctx map[string]string, last any, capMap map[string]string) error {
+	if len(capMap) == 0 {
+		return nil
+	}
+	if last == nil {
+		return fmt.Errorf("capture requires JSON stdout, but LAST_JSON is nil")
+	}
+
+	for varName, expr := range capMap {
+		if isBuiltInKey(varName) {
+			// built-inは上書きさせない（今の思想のまま）
+			continue
+		}
+		val, err := gojmespath.Search(expr, last)
+		if err != nil {
+			return fmt.Errorf("capture %s: invalid expr %q: %w", varName, expr, err)
+		}
+
+		// scalar -> string / array|object -> JSON string
+		switch v := val.(type) {
+		case nil:
+			ctx[varName] = ""
+		case string:
+			ctx[varName] = v
+		case bool, float64:
+			ctx[varName] = fmt.Sprint(v)
+		default:
+			j, e := json.Marshal(v)
+			if e != nil {
+				return fmt.Errorf("capture %s: json marshal failed: %w", varName, e)
+			}
+			ctx[varName] = string(j)
+		}
+	}
+
+	return nil
+}
+
+func evalIf(ifb *IfBlock, ctx map[string]string, last any) (bool, error) {
+	if ifb == nil {
+		return true, nil
+	}
+	if last == nil {
+		return false, fmt.Errorf("if requires JSON stdout, but LAST_JSON is nil")
+	}
+
+	op := strings.ToLower(strings.TrimSpace(ifb.Op))
+	if op == "" {
+		op = "eq"
+	}
+
+	// expr: JMESPath against LAST_JSON
+	got, err := gojmespath.Search(ifb.Expr, last)
+	if err != nil {
+		return false, fmt.Errorf("if: invalid expr %q: %w", ifb.Expr, err)
+	}
+
+	// value: allow ${VAR}
+	want := ""
+	if ifb.Value != "" {
+		want, _, err = expandStrict(ifb.Value, ctx)
+		if err != nil {
+			return false, fmt.Errorf("if: value expand failed: %w", err)
+		}
+	}
+
+	switch op {
+	case "exists":
+		return got != nil, nil
+
+	case "eq", "ne":
+		gs := fmt.Sprint(got)
+		if op == "eq" {
+			return gs == want, nil
+		}
+		return gs != want, nil
+
+	case "contains":
+		// string contains / array contains
+		switch v := got.(type) {
+		case string:
+			return strings.Contains(v, want), nil
+		case []any:
+			for _, it := range v {
+				if fmt.Sprint(it) == want {
+					return true, nil
+				}
+			}
+			return false, nil
+		default:
+			return false, fmt.Errorf("if contains: unsupported type %T", got)
+		}
+
+	case "in":
+		// want is comma-separated list OR JSON array string. keep it simple: comma list.
+		parts := strings.Split(want, ",")
+		gs := fmt.Sprint(got)
+		for _, p := range parts {
+			if strings.TrimSpace(p) == gs {
+				return true, nil
+			}
+		}
+		return false, nil
+
+	default:
+		return false, fmt.Errorf("if: unsupported op: %s", op)
+	}
+}
+func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region string, ctx map[string]string, c Cmd) error {
+	// render args
+	finalArgs, err := renderAWSArgs(profile, region, c.Run, ctx)
+	if err != nil {
+		fmt.Fprintf(mw, "❌ CMD NG    | %s | profile=%s (render)\n", c.Name, profile)
+		return err
+	}
+
+	if dryRun {
+		fmt.Fprintf(mw, "🧪 RUN PLAN  | %s | profile=%s\n", c.Name, profile)
+		fmt.Fprintln(mw, strings.Join(finalArgs, " "))
+		// dry-runでは if/capture は評価しない（実データが無いので）
+		return nil
+	}
+
+	fmt.Fprintf(mw, "▶️  RUN       | %s | profile=%s\n", c.Name, profile)
+
+	runCmdStart := time.Now()
+	stdout, err := runAWSAndCapture(finalArgs, mw)
+	runCmdDuration := time.Since(runCmdStart)
+
+	if err != nil {
+		fmt.Fprintf(mw, "❌ RUN NG    | %s | profile=%s | duration=%s\n", c.Name, profile, runCmdDuration)
+		return err
+	}
+	fmt.Fprintf(mw, "✅ RUN OK    | %s | profile=%s | duration=%s\n", c.Name, profile, runCmdDuration)
+
+	// LAST_JSON
+	last, ok := parseJSONOrNil(stdout)
+	if !ok {
+		last = nil
+	}
+
+	// capture (optional)
+	if len(c.Capture) > 0 {
+		if err := applyCapture(ctx, last, c.Capture); err != nil {
+			fmt.Fprintf(mw, "❌ CAPTURE NG | %s | profile=%s\n", c.Name, profile)
+			return err
+		}
+		fmt.Fprintf(mw, "✅ CAPTURE OK | %s | profile=%s\n", c.Name, profile)
+	}
+
+	// if (optional) + ok/ng
+	if c.If != nil {
+		pass, err := evalIf(c.If, ctx, last)
+		if err != nil {
+			fmt.Fprintf(mw, "❌ IF NG     | %s | profile=%s\n", c.Name, profile)
+			return err
+		}
+
+		if pass {
+			fmt.Fprintf(mw, "✅ IF OK     | %s | profile=%s\n", c.Name, profile)
+			for _, child := range c.Ok {
+				if err := runCmdTreeForProfile(mw, dryRun, profile, region, ctx, child); err != nil {
+					return err
+				}
+			}
+		} else {
+			fmt.Fprintf(mw, "❌ IF NG     | %s | profile=%s\n", c.Name, profile)
+			for _, child := range c.Ng {
+				if err := runCmdTreeForProfile(mw, dryRun, profile, region, ctx, child); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
 }

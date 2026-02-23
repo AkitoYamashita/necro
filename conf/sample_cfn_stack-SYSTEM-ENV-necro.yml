@@ -10,7 +10,6 @@ Parameters:
     Description: "Artifact bucket name (e.g. s3-com-prd-necro-artifact)"
   TrustedAccountId:
     Type: String
-    Default: "123456789012"
     AllowedPattern: "^[0-9]{12}$"
     Description: "Trusted AWS Account ID (root principal) that can assume this role"
 
