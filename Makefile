@@ -18,11 +18,14 @@ readme: # @hide
 	#@if [ -f other/Makefile ]; then echo; echo "[other/Makefile]"; grep -E '^[^#[:space:]].*:[[:space:]]*(#.*)?$$' other/Makefile; fi
 sso_login:
 	aws sso login --profile COM_PRD
-build_win:
-	@GOOS=windows GOARCH=amd64 go build -ldflags "-s -w -X main.version=dev -X main.commit=local -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o dist/necro_windows_amd64.exe .
+build_linux:
+	@GOOS=linux GOARCH=amd64 go build -ldflags "-s -w -X main.version=dev -X main.commit=$(git rev-parse --short HEAD) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o dist/necro_linux_amd64 .
 build_mac:
 	@go build -ldflags "-s -w -X main.version=dev -X main.commit=$(git rev-parse --short HEAD) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o dist/necro .
-build: build_mac clean run
+build_win:
+	@GOOS=windows GOARCH=amd64 go build -ldflags "-s -w -X main.version=dev -X main.commit=local -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o dist/necro_windows_amd64.exe .
+build: build_linux build_mac build_win
+dev: build_mac clean run
 clean: ## keep latest 5 log/*.txt and remove older ones
 	ls -1t log/*.txt 2>/dev/null | tail -n +6 | xargs -r rm -f
 run:
