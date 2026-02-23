@@ -39,11 +39,18 @@ type Config struct {
 type Cmd struct {
 	Name    string            `yaml:"name"`
 	Run     []string          `yaml:"run"`
-	Capture map[string]string `yaml:"capture,omitempty"` // VAR -> JMESPath
+	Capture map[string]string `yaml:"capture,omitempty"`
 
 	If *IfBlock `yaml:"if,omitempty"`
 	Ok []Cmd    `yaml:"ok,omitempty"`
 	Ng []Cmd    `yaml:"ng,omitempty"`
+
+	ForEach *ForEachBlock `yaml:"foreach,omitempty"`
+}
+
+type ForEachBlock struct {
+	Var string `yaml:"var"` // ctx にある配列(JSON文字列)
+	As  string `yaml:"as"`  // ループ内で使う変数名
 }
 
 type IfBlock struct {
@@ -625,7 +632,47 @@ func evalIf(ifb *IfBlock, ctx map[string]string, last any) (bool, error) {
 		return false, fmt.Errorf("if: unsupported op: %s", op)
 	}
 }
+
 func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region string, ctx map[string]string, c Cmd) error {
+
+	// ===============================
+	// foreach handling
+	// ===============================
+	if c.ForEach != nil {
+		raw, ok := ctx[c.ForEach.Var]
+		if !ok {
+			return fmt.Errorf("foreach: undefined variable: %s", c.ForEach.Var)
+		}
+
+		var arr []any
+		if err := json.Unmarshal([]byte(raw), &arr); err != nil {
+			return fmt.Errorf("foreach: variable %s is not JSON array", c.ForEach.Var)
+		}
+
+		for _, item := range arr {
+			childCtx := copyMap(ctx)
+			childCtx[c.ForEach.As] = fmt.Sprint(item)
+
+			childCmd := Cmd{
+				Name:    c.Name,
+				Run:     c.Run,
+				Capture: c.Capture,
+				If:      c.If,
+				Ok:      c.Ok,
+				Ng:      c.Ng,
+			}
+
+			if err := runCmdTreeForProfile(mw, dryRun, profile, region, childCtx, childCmd); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	// ===============================
+	// normal execution
+	// ===============================
+
 	// render args
 	finalArgs, err := renderAWSArgs(profile, region, c.Run, ctx)
 	if err != nil {
@@ -636,7 +683,6 @@ func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region stri
 	if dryRun {
 		fmt.Fprintf(mw, "🧪 RUN PLAN  | %s | profile=%s\n", c.Name, profile)
 		fmt.Fprintln(mw, strings.Join(finalArgs, " "))
-		// dry-runでは if/capture は評価しない（実データが無いので）
 		return nil
 	}
 
@@ -652,13 +698,13 @@ func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region stri
 	}
 	fmt.Fprintf(mw, "✅ RUN OK    | %s | profile=%s | duration=%s\n", c.Name, profile, runCmdDuration)
 
-	// LAST_JSON
+	// parse LAST_JSON
 	last, ok := parseJSONOrNil(stdout)
 	if !ok {
 		last = nil
 	}
 
-	// capture (optional)
+	// capture
 	if len(c.Capture) > 0 {
 		if err := applyCapture(ctx, last, c.Capture); err != nil {
 			fmt.Fprintf(mw, "❌ CAPTURE NG | %s | profile=%s\n", c.Name, profile)
@@ -667,7 +713,7 @@ func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region stri
 		fmt.Fprintf(mw, "✅ CAPTURE OK | %s | profile=%s\n", c.Name, profile)
 	}
 
-	// if (optional) + ok/ng
+	// if handling
 	if c.If != nil {
 		pass, err := evalIf(c.If, ctx, last)
 		if err != nil {

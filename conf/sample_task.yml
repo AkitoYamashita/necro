@@ -15,6 +15,12 @@ vars: # build-in var: PROFILE,REGION,ACCOUNT_ID
     ## s3-file
     CFN_LOCAL: conf/cfn_stack-SYSTEM-ENV-necro.yml
     CFN_REMOTE: stack-${SYSTEM}-${ENV}-necro.yml
+    ## cfn-stack
+    TEMPLATE_URL: https://${BUCKET_NAME}.s3.${REGION}.amazonaws.com/${CFN_REMOTE}
+    STACK_NAME: stack-${SYSTEM}-${ENV}-necro
+    ROLE_NAME: role-${SYSTEM}-${ENV}-necro-assume-role
+    CHANGE_SET_NAME: cs-${RUN_ID}
+    TRUSTED_ACCOUNT_ID: "123456789012"
 
   profiles:
     XXX_PRD:
@@ -27,11 +33,11 @@ cmd:
   #   run: ["sts", "get-caller-identity"]
 
   ## S3バケット(一覧)
-  # - name: list-s3
+  # - name: s3-bucket-list
   #   run: ["s3api", "list-buckets"]
 
   ## S3バケット(作成)
-  # - name: necro-artifact-s3bucket-create
+  # - name: s3-bucket-create
   #   run:
   #     [
   #       "s3api",
@@ -43,7 +49,7 @@ cmd:
   #     ]
 
   ## S3バケット(確認)
-  # - name: necro-artifact-s3bucket-check
+  # - name: s3-bucket-check
   #   run:
   #     [
   #       "s3api",
@@ -53,7 +59,7 @@ cmd:
   #     ]
 
   ## CFNテンプレート(DELETE)
-  # - name: cfn-template-s3-delete
+  # - name: s3-delete-object
   #   run:
   #     [
   #       "s3api",
@@ -65,7 +71,7 @@ cmd:
   #     ]
 
   ## CFNテンプレート(PUT)
-  # - name: cfn-template-s3-put
+  # - name: s3-cp
   #   run:
   #     [
   #       "s3",
@@ -73,3 +79,133 @@ cmd:
   #       "${CFN_LOCAL}",
   #       "s3://${BUCKET_NAME}/${CFN_REMOTE}",
   #     ]
+
+  ## CFNスタック(削除)
+  # - name: stack-delete
+  #   run:
+  #     [
+  #       "cloudformation",
+  #       "delete-stack",
+  #       "--stack-name",
+  #       "${STACK_NAME}",
+  #     ]
+  # - name: stack-wait-delete
+  #   run:
+  #     [
+  #       "cloudformation",
+  #       "wait",
+  #       "stack-delete-complete",
+  #       "--stack-name",
+  #       "${STACK_NAME}",
+  #     ]
+
+  ## CFNスタック(作成)
+  # - name: stack-deploy
+  #   run:
+  #     [
+  #       "cloudformation",
+  #       "deploy",
+  #       "--stack-name",
+  #       "${STACK_NAME}",
+  #       "--template-file",
+  #       "${CFN_LOCAL}",
+  #       "--capabilities",
+  #       "CAPABILITY_NAMED_IAM",
+  #       "--parameter-overrides",
+  #       "RoleName=${ROLE_NAME}",
+  #       "BucketName=${BUCKET_NAME}",
+  #       "TrustedAccountId=${TRUSTED_ACCOUNT_ID}"
+  #     ]
+
+  ## CFNスタック.変更セット(全削除)
+  # - name: changeset-list
+  #   run:
+  #     ["cloudformation","list-change-sets","--stack-name","${STACK_NAME}"]
+  #   capture:
+  #     CHANGE_SET_NAMES: "Summaries[].ChangeSetName"
+
+  # - name: changeset-delete-all
+  #   foreach:
+  #     var: CHANGE_SET_NAMES
+  #     as: CHANGE_SET_NAME
+  #   run:
+  #     [
+  #       "cloudformation",
+  #       "delete-change-set",
+  #       "--stack-name",
+  #       "${STACK_NAME}",
+  #       "--change-set-name",
+  #       "${CHANGE_SET_NAME}"
+  #     ]
+
+  ## CFNスタック(更新※差分なし変更セット自動削除)
+  # - name: stack-update-changeset-create
+  #   run:
+  #     [
+  #       "cloudformation",
+  #       "create-change-set",
+  #       "--stack-name",
+  #       "${STACK_NAME}",
+  #       "--change-set-name",
+  #       "${CHANGE_SET_NAME}",
+  #       "--change-set-type",
+  #       "UPDATE",
+  #       "--template-body",
+  #       "file://${CFN_LOCAL}",
+  #       "--capabilities",
+  #       "CAPABILITY_NAMED_IAM",
+  #       "--parameters",
+  #       "ParameterKey=RoleName,ParameterValue=${ROLE_NAME}",
+  #       "ParameterKey=BucketName,ParameterValue=${BUCKET_NAME}",
+  #       "ParameterKey=TrustedAccountId,ParameterValue=${TRUSTED_ACCOUNT_ID}"
+  #     ]
+  #   capture:
+  #     CHANGE_SET_ID: "Id"
+  # - name: stack-update-changeset-wait
+  #   run:
+  #     [
+  #       "cloudformation",
+  #       "wait",
+  #       "change-set-create-complete",
+  #       "--change-set-name",
+  #       "${CHANGE_SET_ID}"
+  #     ]
+  # - name: stack-update-changeset-describe
+  #   run:
+  #     [
+  #       "cloudformation",
+  #       "describe-change-set",
+  #       "--change-set-name",
+  #       "${CHANGE_SET_ID}"
+  #     ]
+  #   if:
+  #     expr: "Status"
+  #     op: "eq"
+  #     value: "FAILED"
+  #   ok:
+  #     - name: stack-update-changeset-delete-empty
+  #       run:
+  #         [
+  #           "cloudformation",
+  #           "delete-change-set",
+  #           "--change-set-name",
+  #           "${CHANGE_SET_ID}"
+  #         ]
+  #   ng:
+  #     - name: stack-update-changeset-exec
+  #       run:
+  #         [
+  #           "cloudformation",
+  #           "execute-change-set",
+  #           "--change-set-name",
+  #           "${CHANGE_SET_ID}"
+  #         ]
+  #     - name: stack-update-wait
+  #       run:
+  #         [
+  #           "cloudformation",
+  #           "wait",
+  #           "stack-update-complete",
+  #           "--stack-name",
+  #           "${STACK_NAME}"
+  #         ]
