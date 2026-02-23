@@ -3,14 +3,18 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -46,6 +50,7 @@ func main() {
 	if handleSubcommand(os.Args) {
 		return
 	}
+
 	cfgPath, dryRun := parseArgs(os.Args)
 	if cfgPath == "" {
 		usage()
@@ -78,36 +83,58 @@ func main() {
 		os.Exit(1)
 	}
 
+	// ---- Log file (single file per run) ----
+	runID := newRunID()
+	dieIf(os.MkdirAll("log", 0755))
+	logPath := filepath.Join("log", runID+".txt")
+
+	logFile, err := os.Create(logPath)
+	dieIf(err)
+	defer logFile.Close()
+
+	// write to console + log file
+	mw := io.MultiWriter(os.Stdout, logFile)
+
+	fmt.Fprintf(mw, "🧾 LOG FILE | %s\n", logPath)
+	fmt.Fprintf(mw, "🆔 RUN ID   | %s\n", runID)
+
 	// ---- Preview ----
-	fmt.Println("==== TARGET PROFILES ====")
+	fmt.Fprintln(mw, "\n==== TARGET PROFILES ====")
 	for _, p := range profiles {
-		fmt.Println("-", p)
+		fmt.Fprintln(mw, "-", p)
 	}
 
-	fmt.Println("\n==== COMMANDS ====")
+	fmt.Fprintln(mw, "\n==== COMMANDS ====")
 	for _, c := range cfg.Cmd {
-		fmt.Println("-", c.Name)
+		fmt.Fprintln(mw, "-", c.Name)
 	}
 
 	if dryRun {
-		fmt.Println("\n==== DRY RUN PLAN ====")
+		fmt.Fprintln(mw, "\n==== DRY RUN PLAN ====")
 	} else {
+		// Proceed prompt should be console-only (avoid polluting log with user input)
 		if !confirmProceed() {
-			fmt.Println("Cancelled.")
+			fmt.Fprintln(mw, "Cancelled.")
 			os.Exit(0)
 		}
 	}
 
 	// ---- Execute/Plan ----
-
 	// 1) Build ctx cache per profile (STS check happens here once per profile)
 	ctxByProfile := make(map[string]map[string]string, len(profiles))
 
 	for _, profile := range profiles {
-		accountID, _ := mustGetCallerIdentity(profile, region)
+		accountID, arn, errText, e := getCallerIdentity(profile, region)
+		if e != nil {
+			fmt.Fprintf(mw, "❌ STS NG   | profile=%s\n", profile)
+			if errText != "" {
+				fmt.Fprintf(mw, "   stderr  | %s\n", errText)
+			}
+			die(e)
+		}
+		_ = arn // keep for future verbose use
 
-		// Show STS OK clearly (also useful in dry-run)
-		fmt.Printf("🔐 STS OK   | profile=%s | account=%s\n", profile, accountID)
+		fmt.Fprintf(mw, "🔐 STS OK   | profile=%s | account=%s\n", profile, accountID)
 
 		// Built-in context (highest priority)
 		ctx := map[string]string{
@@ -125,49 +152,48 @@ func main() {
 		}
 
 		// Resolve template references inside ctx values (after merge)
-		resolved, err := resolveContext(ctx)
-		if err != nil {
-			die(fmt.Errorf("profile %s: %w", profile, err))
+		resolved, e := resolveContext(ctx)
+		if e != nil {
+			die(fmt.Errorf("profile %s: %w", profile, e))
 		}
-
 		ctxByProfile[profile] = resolved
 	}
 
 	// 2) Run cmd-by-cmd (gate). cmd1 across all profiles -> cmd2 across all profiles ...
 	for _, c := range cfg.Cmd {
 		if dryRun {
-			fmt.Printf("\n🧪 CMD PLAN | %s\n", c.Name)
+			fmt.Fprintf(mw, "\n🧪 CMD PLAN  | %s\n", c.Name)
 		} else {
-			fmt.Printf("\n🚀 CMD START | %s\n", c.Name)
+			fmt.Fprintf(mw, "\n🚀 CMD START | %s\n", c.Name)
 		}
 
 		for _, profile := range profiles {
 			ctx := ctxByProfile[profile]
 
-			finalArgs, err := renderAWSArgs(profile, region, c.Run, ctx)
-			if err != nil {
-				fmt.Printf("❌ CMD NG   | %s | profile=%s (render)\n", c.Name, profile)
-				die(fmt.Errorf("profile %s cmd %s: %w", profile, c.Name, err))
+			finalArgs, e := renderAWSArgs(profile, region, c.Run, ctx)
+			if e != nil {
+				fmt.Fprintf(mw, "❌ CMD NG    | %s | profile=%s (render)\n", c.Name, profile)
+				die(fmt.Errorf("profile %s cmd %s: %w", profile, c.Name, e))
 			}
 
 			if dryRun {
-				fmt.Printf("🧪 RUN PLAN | %s | profile=%s\n", c.Name, profile)
-				fmt.Println(strings.Join(finalArgs, " "))
+				fmt.Fprintf(mw, "🧪 RUN PLAN  | %s | profile=%s\n", c.Name, profile)
+				fmt.Fprintln(mw, strings.Join(finalArgs, " "))
 				continue
 			}
 
-			fmt.Printf("▶️  RUN      | %s | profile=%s\n", c.Name, profile)
-			if err := runAWSWithError(finalArgs); err != nil {
-				fmt.Printf("❌ RUN NG   | %s | profile=%s\n", c.Name, profile)
-				die(err) // keep original behavior: stop immediately
+			fmt.Fprintf(mw, "▶️  RUN       | %s | profile=%s\n", c.Name, profile)
+			if e := runAWSWithError(finalArgs, mw); e != nil {
+				fmt.Fprintf(mw, "❌ RUN NG    | %s | profile=%s\n", c.Name, profile)
+				die(e) // stop immediately
 			}
-			fmt.Printf("✅ RUN OK   | %s | profile=%s\n", c.Name, profile)
+			fmt.Fprintf(mw, "✅ RUN OK    | %s | profile=%s\n", c.Name, profile)
 		}
 
 		if dryRun {
-			fmt.Printf("🧪 CMD DONE | %s\n", c.Name)
+			fmt.Fprintf(mw, "🧪 CMD DONE  | %s\n", c.Name)
 		} else {
-			fmt.Printf("🚀 CMD OK   | %s\n", c.Name)
+			fmt.Fprintf(mw, "🚀 CMD OK    | %s\n", c.Name)
 		}
 	}
 }
@@ -317,8 +343,7 @@ func expandStrict(s string, ctx map[string]string) (string, bool, error) {
 
 	return out, changed, nil
 }
-func mustGetCallerIdentity(profile, region string) (accountID string, arn string) {
-	// We keep region + output json for consistency.
+func getCallerIdentity(profile, region string) (accountID string, arn string, errText string, err error) {
 	cmd := exec.Command("aws",
 		"--profile", profile,
 		"--region", region,
@@ -337,32 +362,31 @@ func mustGetCallerIdentity(profile, region string) (accountID string, arn string
 		"AWS_CLI_AUTO_PROMPT=off",
 	)
 
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("❌ STS NG   | profile=%s\n", profile)
-		die(fmt.Errorf("sts failed for %s: %s", profile, strings.TrimSpace(stderr.String())))
+	if e := cmd.Run(); e != nil {
+		return "", "", strings.TrimSpace(stderr.String()), fmt.Errorf("sts failed for %s", profile)
 	}
 
 	var data struct {
 		Account string `json:"Account"`
 		Arn     string `json:"Arn"`
 	}
-	if err := json.Unmarshal(out.Bytes(), &data); err != nil {
-		die(fmt.Errorf("sts json parse failed for %s: %v", profile, err))
+	if e := json.Unmarshal(out.Bytes(), &data); e != nil {
+		return "", "", "", fmt.Errorf("sts json parse failed for %s: %v", profile, e)
 	}
 	if strings.TrimSpace(data.Account) == "" {
-		die(fmt.Errorf("sts returned empty Account for %s", profile))
+		return "", "", "", fmt.Errorf("sts returned empty Account for %s", profile)
 	}
 	if strings.TrimSpace(data.Arn) == "" {
-		die(fmt.Errorf("sts returned empty Arn for %s", profile))
+		return "", "", "", fmt.Errorf("sts returned empty Arn for %s", profile)
 	}
 
-	return data.Account, data.Arn
+	return data.Account, data.Arn, "", nil
 }
 
-func runAWSWithError(full []string) error {
+func runAWSWithError(full []string, w io.Writer) error {
 	cmd := exec.Command(full[0], full[1:]...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = w
+	cmd.Stderr = w
 
 	// suppress interactive behaviors (pager / auto prompt)
 	cmd.Env = append(os.Environ(),
@@ -453,4 +477,17 @@ func handleSubcommand(args []string) bool {
 	default:
 		return false
 	}
+}
+func newRunID() string {
+	// e.g. 20260223-170501-123-abc123
+	now := time.Now()
+	ts := now.Format("20060102-150405")
+	ms := fmt.Sprintf("%03d", now.Nanosecond()/1e6)
+
+	b := make([]byte, 3)
+	if _, err := rand.Read(b); err != nil {
+		return ts + "-" + ms + "-000000"
+	}
+
+	return ts + "-" + ms + "-" + hex.EncodeToString(b)
 }
