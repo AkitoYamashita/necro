@@ -12,7 +12,7 @@ vars:
   defaults:
     BUCKET_NAME: s3-${SYSTEM}-${ENV}-necro-artifact
 
-    TEMPLATE_FILE: task3_cfn_necro-assume-role.yml
+    TEMPLATE_FILE: conf/task3_cfn_necro-assume-role.yml
     TEMPLATE_S3_KEY: necro-assume-role.yml
 
     STACK_NAME: stack-${SYSTEM}-${ENV}-necro
@@ -27,7 +27,7 @@ cmd:
   - name: necro-artifact-s3bucket-check
     run: ["s3api", "head-bucket", "--bucket", "${BUCKET_NAME}"]
 
-  # テンプレートアップロード
+  ## テンプレートアップロード
   - name: necro-assume-role-template-upload
     run:
       [
@@ -37,7 +37,7 @@ cmd:
         "s3://${BUCKET_NAME}/${TEMPLATE_S3_KEY}",
       ]
 
-  # 作成/更新
+  ## 作成/更新
   - name: necro-assume-role-stack-deploy
     run:
       [
@@ -54,7 +54,7 @@ cmd:
         "BucketName=${BUCKET_NAME}"
       ]
 
-  # 削除
+  ## 削除
   # - name: necro-assume-role-stack-delete
   #   run:
   #     [
