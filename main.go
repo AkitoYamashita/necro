@@ -37,8 +37,18 @@ type Config struct {
 }
 
 type Cmd struct {
-	Name    string            `yaml:"name"`
-	Run     []string          `yaml:"run"`
+	Name string `yaml:"name"`
+
+	// New:
+	// - aws: AWS CLI subcommand args (necro will prepend aws --profile/--region/--output json ...)
+	// - sh:  Shell command string executed by bash -lc (supports pipes/redirection)
+	Aws []string `yaml:"aws,omitempty"`
+	Sh  string   `yaml:"sh,omitempty"`
+
+	// Backward compatible:
+	// - run: treated as aws args (same as aws:)
+	Run []string `yaml:"run,omitempty"`
+
 	Capture map[string]string `yaml:"capture,omitempty"`
 	Out     string            `yaml:"out,omitempty"`
 
@@ -399,6 +409,24 @@ func getCallerIdentity(profile, region string) (accountID string, arn string, er
 	return data.Account, data.Arn, "", nil
 }
 
+func runShellAndCapture(script string, w io.Writer) (stdout []byte, err error) {
+	cmd := exec.Command("bash", "-lc", script)
+
+	var outBuf bytes.Buffer
+	cmd.Stdout = io.MultiWriter(w, &outBuf)
+	cmd.Stderr = w
+
+	cmd.Env = append(os.Environ(),
+		"AWS_PAGER=",
+		"AWS_CLI_AUTO_PROMPT=off",
+	)
+
+	if e := cmd.Run(); e != nil {
+		return outBuf.Bytes(), e
+	}
+	return outBuf.Bytes(), nil
+}
+
 func runAWSAndCapture(full []string, w io.Writer) (stdout []byte, err error) {
 	cmd := exec.Command(full[0], full[1:]...)
 
@@ -672,32 +700,78 @@ func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region stri
 
 	// ===============================
 	// normal execution
+	// ===============================	// ===============================
+	// normal execution
 	// ===============================
 
-	// render args
-	finalArgs, err := renderAWSArgs(profile, region, c.Run, ctx)
-	if err != nil {
-		fmt.Fprintf(mw, "❌ CMD NG    | %s | profile=%s (render)\n", c.Name, profile)
-		return err
+	// Determine command kind (priority: aws -> sh -> run(backward))
+	kind := ""
+	var awsArgs []string
+	shScript := ""
+
+	if len(c.Aws) > 0 {
+		kind = "aws"
+		awsArgs = c.Aws
+	} else if strings.TrimSpace(c.Sh) != "" {
+		kind = "sh"
+		shScript = c.Sh
+	} else {
+		kind = "aws"
+		awsArgs = c.Run
 	}
 
+	// Render
+	var finalArgs []string
+	var renderedSh string
+	var err error
+
+	if kind == "aws" {
+		finalArgs, err = renderAWSArgs(profile, region, awsArgs, ctx)
+		if err != nil {
+			fmt.Fprintf(mw, "❌ CMD NG    | %s | profile=%s (render)\n", c.Name, profile)
+			return err
+		}
+	} else {
+		renderedSh, _, err = expandStrict(shScript, ctx)
+		if err != nil {
+			fmt.Fprintf(mw, "❌ CMD NG    | %s | profile=%s (render)\n", c.Name, profile)
+			return err
+		}
+		if reVar.MatchString(renderedSh) {
+			return fmt.Errorf("unresolved variable remains in sh: %s", renderedSh)
+		}
+	}
+
+	// Dry-run preview
 	if dryRun {
 		fmt.Fprintf(mw, "🧪 RUN PLAN  | %s | profile=%s\n", c.Name, profile)
-		fmt.Fprintln(mw, strings.Join(finalArgs, " "))
+		if kind == "aws" {
+			fmt.Fprintln(mw, strings.Join(finalArgs, " "))
+		} else {
+			fmt.Fprintln(mw, renderedSh)
+		}
 		if strings.TrimSpace(c.Out) != "" {
-			outPath, _, err := expandStrict(c.Out, ctx)
-			if err != nil {
-				return fmt.Errorf("out path expand failed: %w", err)
+			outPath, _, e := expandStrict(c.Out, ctx)
+			if e != nil {
+				return fmt.Errorf("out path expand failed: %w", e)
 			}
 			fmt.Fprintf(mw, "🧪 OUT PLAN  | %s | profile=%s | path=%s\n", c.Name, profile, outPath)
 		}
 		return nil
 	}
 
+	// Execute
 	fmt.Fprintf(mw, "▶️  RUN       | %s | profile=%s\n", c.Name, profile)
 
 	runCmdStart := time.Now()
-	stdout, err := runAWSAndCapture(finalArgs, mw)
+
+	var stdout []byte
+	if kind == "aws" {
+		stdout, err = runAWSAndCapture(finalArgs, mw)
+	} else {
+		stdout, err = runShellAndCapture(renderedSh, mw)
+	}
+
 	runCmdDuration := time.Since(runCmdStart)
 
 	if err != nil {
@@ -729,7 +803,7 @@ func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region stri
 		fmt.Fprintf(mw, "💾 OUT OK    | %s | profile=%s | path=%s\n", c.Name, profile, outPath)
 	}
 
-	// parse LAST_JSON
+	// parse LAST_JSON (works for aws and sh; if sh doesn't output JSON, LAST_JSON=nil)
 	last, ok := parseJSONOrNil(stdout)
 	if !ok {
 		last = nil
