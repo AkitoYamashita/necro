@@ -11,13 +11,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/Masterminds/sprig/v3"
 	gojmespath "github.com/jmespath/go-jmespath"
 	"gopkg.in/yaml.v3"
+
+	"text/template"
 )
 
 type Config struct {
@@ -30,6 +32,10 @@ type Config struct {
 		Exclude  []string `yaml:"exclude"`
 	} `yaml:"targets"`
 	Vars struct {
+		// vars:
+		//   template-resolve-limit: 10
+		TemplateResolveLimit int `yaml:"template-resolve-limit"`
+
 		Defaults map[string]string            `yaml:"defaults"`
 		Profiles map[string]map[string]string `yaml:"profiles"`
 	} `yaml:"vars"`
@@ -77,8 +83,6 @@ var (
 	commit  = "none"
 	date    = "unknown"
 )
-
-var reVar = regexp.MustCompile(`\$\{([A-Z0-9_]+)\}`)
 
 func main() {
 	if handleSubcommand(os.Args) {
@@ -184,12 +188,12 @@ func main() {
 			mergeVarsNoOverride(ctx, pv)
 		}
 
-		resolved, e := resolveContext(ctx)
-		if e != nil {
-			die(fmt.Errorf("profile %s: %w", profile, e))
+		limit := templateResolveLimitOrDefault(&cfg)
+		if err := resolveContextTemplates(ctx, limit); err != nil {
+			die(fmt.Errorf("profile %s: %w", profile, err))
 		}
 
-		ctxByProfile[profile] = resolved
+		ctxByProfile[profile] = ctx
 	}
 
 	// ---------- Execute cmd by cmd ----------
@@ -205,7 +209,9 @@ func main() {
 			// profileごとにctxは独立させる（captureで汚染しない）
 			ctx := ctxByProfile[profile]
 
-			if err := runCmdTreeForProfile(mw, dryRun, profile, region, ctx, c); err != nil {
+			limit := templateResolveLimitOrDefault(&cfg)
+
+			if err := runCmdTreeForProfile(mw, dryRun, profile, region, limit, ctx, c); err != nil {
 				// 失敗したら即停止（今まで通り）
 				die(err)
 			}
@@ -272,50 +278,7 @@ func mergeVarsNoOverride(dst map[string]string, add map[string]string) {
 }
 
 func isBuiltInKey(k string) bool {
-	return k == "PROFILE" || k == "REGION" || k == "ACCOUNT_ID"
-}
-
-func resolveContext(ctx map[string]string) (map[string]string, error) {
-	// resolve ${VAR} inside ctx values using ctx itself
-	// error if referenced VAR is not defined
-	// loop until stable, with a small cap to avoid infinite recursion
-	out := copyMap(ctx)
-
-	for step := 0; step < 20; step++ {
-		changed := false
-
-		// stable iteration order (debuggability)
-		keys := make([]string, 0, len(out))
-		for k := range out {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-
-		for _, k := range keys {
-			v := out[k]
-			nv, didChange, err := expandStrict(v, out)
-			if err != nil {
-				return nil, err
-			}
-			if didChange {
-				out[k] = nv
-				changed = true
-			}
-		}
-
-		if !changed {
-			break
-		}
-	}
-
-	// final check: no unresolved placeholders
-	for k, v := range out {
-		if reVar.MatchString(v) {
-			return nil, fmt.Errorf("unresolved variable remains in %s: %s", k, v)
-		}
-	}
-
-	return out, nil
+	return k == "PROFILE" || k == "REGION" || k == "ACCOUNT_ID" || k == "RUN_ID"
 }
 
 func renderAWSArgs(profile, region string, run []string, ctx map[string]string) ([]string, error) {
@@ -329,12 +292,9 @@ func renderAWSArgs(profile, region string, run []string, ctx map[string]string) 
 	}
 
 	for _, a := range run {
-		na, _, err := expandStrict(a, ctx)
+		na, _, err := renderTemplateString(a, ctx)
 		if err != nil {
 			return nil, err
-		}
-		if reVar.MatchString(na) {
-			return nil, fmt.Errorf("unresolved variable remains in cmd arg: %s", na)
 		}
 		full = append(full, na)
 	}
@@ -342,35 +302,6 @@ func renderAWSArgs(profile, region string, run []string, ctx map[string]string) 
 	return full, nil
 }
 
-func expandStrict(s string, ctx map[string]string) (string, bool, error) {
-	changed := false
-
-	out := reVar.ReplaceAllStringFunc(s, func(m string) string {
-		sub := reVar.FindStringSubmatch(m)
-		if len(sub) != 2 {
-			return m
-		}
-		key := sub[1]
-		val, ok := ctx[key]
-		if !ok {
-			// signal error by returning a special marker
-			return "\x00MISSING:" + key + "\x00"
-		}
-		changed = true
-		return val
-	})
-
-	if strings.Contains(out, "\x00MISSING:") {
-		// extract first missing key
-		i := strings.Index(out, "\x00MISSING:")
-		j := strings.Index(out[i:], "\x00")
-		miss := out[i : i+j]
-		miss = strings.TrimPrefix(miss, "\x00MISSING:")
-		return "", false, fmt.Errorf("undefined variable: %s (in %s)", miss, s)
-	}
-
-	return out, changed, nil
-}
 func getCallerIdentity(profile, region string) (accountID string, arn string, errText string, err error) {
 	cmd := exec.Command("aws",
 		"--profile", profile,
@@ -616,12 +547,11 @@ func evalIf(ifb *IfBlock, ctx map[string]string, last any) (bool, error) {
 		return false, fmt.Errorf("if: invalid expr %q: %w", ifb.Expr, err)
 	}
 
-	// value: allow ${VAR}
 	want := ""
 	if ifb.Value != "" {
-		want, _, err = expandStrict(ifb.Value, ctx)
+		want, _, err = renderTemplateString(ifb.Value, ctx)
 		if err != nil {
-			return false, fmt.Errorf("if: value expand failed: %w", err)
+			return false, fmt.Errorf("if: value render failed: %w", err)
 		}
 	}
 
@@ -668,7 +598,7 @@ func evalIf(ifb *IfBlock, ctx map[string]string, last any) (bool, error) {
 	}
 }
 
-func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region string, ctx map[string]string, c Cmd) error {
+func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region string, templateResolveLimit int, ctx map[string]string, c Cmd) error {
 
 	// ===============================
 	// foreach handling
@@ -697,7 +627,7 @@ func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region stri
 				Ng:      c.Ng,
 			}
 
-			if err := runCmdTreeForProfile(mw, dryRun, profile, region, childCtx, childCmd); err != nil {
+			if err := runCmdTreeForProfile(mw, dryRun, profile, region, templateResolveLimit, childCtx, childCmd); err != nil {
 				return err
 			}
 		}
@@ -737,23 +667,17 @@ func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region stri
 			return err
 		}
 	} else {
-		renderedSh, _, err = expandStrict(shScript, ctx)
+		renderedSh, _, err = renderTemplateString(shScript, ctx)
 		if err != nil {
 			fmt.Fprintf(mw, "❌ CMD NG    | %s | profile=%s (render)\n", c.Name, profile)
 			return err
 		}
-		if reVar.MatchString(renderedSh) {
-			return fmt.Errorf("unresolved variable remains in sh: %s", renderedSh)
-		}
 
 		if strings.TrimSpace(c.In) != "" {
-			renderedInPath, _, err = expandStrict(c.In, ctx)
+			renderedInPath, _, err = renderTemplateString(c.In, ctx)
 			if err != nil {
 				fmt.Fprintf(mw, "❌ CMD NG    | %s | profile=%s (render-in)\n", c.Name, profile)
 				return err
-			}
-			if reVar.MatchString(renderedInPath) {
-				return fmt.Errorf("unresolved variable remains in in: %s", renderedInPath)
 			}
 		}
 	}
@@ -771,7 +695,7 @@ func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region stri
 			}
 		}
 		if strings.TrimSpace(c.Out) != "" {
-			outPath, _, e := expandStrict(c.Out, ctx)
+			outPath, _, e := renderTemplateString(c.Out, ctx)
 			if e != nil {
 				return fmt.Errorf("out path expand failed: %w", e)
 			}
@@ -813,7 +737,7 @@ func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region stri
 
 	// out: save raw stdout to file (no formatting)
 	if strings.TrimSpace(c.Out) != "" {
-		outPath, _, e := expandStrict(c.Out, ctx)
+		outPath, _, e := renderTemplateString(c.Out, ctx)
 		if e != nil {
 			fmt.Fprintf(mw, "❌ OUT NG    | %s | profile=%s (expand)\n", c.Name, profile)
 			return fmt.Errorf("out path expand failed: %w", e)
@@ -846,6 +770,14 @@ func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region stri
 			fmt.Fprintf(mw, "❌ CAPTURE NG | %s | profile=%s\n", c.Name, profile)
 			return err
 		}
+
+		// NOTE: cfg is not in scope here, so default is used unless you pass limit down.
+		// If you want cfg-based limit here, pass it into runCmdTreeForProfile as an arg.
+		if err := resolveContextTemplates(ctx, templateResolveLimit); err != nil {
+			fmt.Fprintf(mw, "❌ RESOLVE NG | %s | profile=%s\n", c.Name, profile)
+			return err
+		}
+
 		fmt.Fprintf(mw, "✅ CAPTURE OK | %s | profile=%s\n", c.Name, profile)
 	}
 
@@ -860,14 +792,14 @@ func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region stri
 		if pass {
 			fmt.Fprintf(mw, "✅ IF OK     | %s | profile=%s\n", c.Name, profile)
 			for _, child := range c.Ok {
-				if err := runCmdTreeForProfile(mw, dryRun, profile, region, ctx, child); err != nil {
+				if err := runCmdTreeForProfile(mw, dryRun, profile, region, templateResolveLimit, ctx, child); err != nil {
 					return err
 				}
 			}
 		} else {
 			fmt.Fprintf(mw, "❌ IF NG     | %s | profile=%s\n", c.Name, profile)
 			for _, child := range c.Ng {
-				if err := runCmdTreeForProfile(mw, dryRun, profile, region, ctx, child); err != nil {
+				if err := runCmdTreeForProfile(mw, dryRun, profile, region, templateResolveLimit, ctx, child); err != nil {
 					return err
 				}
 			}
@@ -875,4 +807,68 @@ func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region stri
 	}
 
 	return nil
+}
+func templateResolveLimitOrDefault(cfg *Config) int {
+	if cfg == nil {
+		return 10
+	}
+	if cfg.Vars.TemplateResolveLimit > 0 {
+		return cfg.Vars.TemplateResolveLimit
+	}
+	return 10
+}
+
+func renderTemplateString(s string, ctx map[string]string) (string, bool, error) {
+	// Go template + sprig. undefined key -> error
+	tpl, err := template.New("necro").
+		Option("missingkey=error").
+		Funcs(sprig.TxtFuncMap()).
+		Parse(s)
+	if err != nil {
+		return "", false, fmt.Errorf("template parse failed: %w (in %q)", err, s)
+	}
+
+	var buf bytes.Buffer
+	if err := tpl.Execute(&buf, ctx); err != nil {
+		return "", false, fmt.Errorf("template exec failed: %w (in %q)", err, s)
+	}
+
+	out := buf.String()
+	return out, out != s, nil
+}
+
+func resolveContextTemplates(ctx map[string]string, limit int) error {
+	// resolve all ctx values as templates using ctx itself, iteratively until stable
+	if limit <= 0 {
+		limit = 10
+	}
+
+	for step := 0; step < limit; step++ {
+		changed := false
+
+		// stable iteration order (debuggability)
+		keys := make([]string, 0, len(ctx))
+		for k := range ctx {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+
+		for _, k := range keys {
+			v := ctx[k]
+			nv, didChange, err := renderTemplateString(v, ctx)
+			if err != nil {
+				return fmt.Errorf("resolve ctx[%s] failed: %w", k, err)
+			}
+			if didChange {
+				ctx[k] = nv
+				changed = true
+			}
+		}
+
+		if !changed {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("template resolve did not converge within limit=%d", limit)
 }

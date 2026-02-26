@@ -4,47 +4,43 @@ defaults:
   region: ap-northeast-1
 
 targets:
-  profiles: [
-    # "COM_PRD"
-  ] # 空なら ~/.aws/config から自動取得
+  profiles: # 空なら ~/.aws/config から自動取得
+    [
+      # "COM_PRD"
+    ] 
   exclude:
     - SAMPLE_PROFILE
 
-vars: # build-in var: PROFILE,REGION,ACCOUNT_ID
-  defaults:
-    ## s3-bucket 
-    BUCKET_NAME: s3-${SYSTEM}-${ENV}-necro-artifact
-    ## s3-file
-    CFN_LOCAL: conf/cfn_stack-SYSTEM-ENV-necro.yml
-    CFN_REMOTE: stack-${SYSTEM}-${ENV}-necro.yml
-    ## cfn-stack
-    TEMPLATE_URL: https://${BUCKET_NAME}.s3.${REGION}.amazonaws.com/${CFN_REMOTE}
-    STACK_NAME: stack-${SYSTEM}-${ENV}-necro
-    ROLE_NAME: role-${SYSTEM}-${ENV}-necro-assume-role
-    CHANGE_SET_NAME: cs-${RUN_ID}
-    TRUSTED_ACCOUNT_ID: "123456789012"
+vars: # build-in var: PROFILE, REGION, ACCOUNT_ID, RUN_ID
+  # template-resolve-limit: 10
 
-  profiles:
-    COM_PRD:
-      SYSTEM: com
-      ENV: prd
+  defaults:
+    SYSTEM: '{{ (splitList "_" .PROFILE | first | lower) }}'
+    ENV: '{{ (splitList "_" .PROFILE | last  | lower) }}'
+
+    ## s3-bucket
+    BUCKET_NAME: 's3-{{ .SYSTEM }}-{{ .ENV }}-necro-artifact'
+
+    ## s3-file
+    CFN_LOCAL: 'conf/cfn_stack-SYSTEM-ENV-necro.yml'
+    CFN_REMOTE: 'stack-{{ .SYSTEM }}-{{ .ENV }}-necro.yml'
+
+    ## cfn-stack
+    TEMPLATE_URL: 'https://{{ .BUCKET_NAME }}.s3.{{ .REGION }}.amazonaws.com/{{ .CFN_REMOTE }}'
+    STACK_NAME: 'stack-{{ .SYSTEM }}-{{ .ENV }}-necro'
+    ROLE_NAME: 'role-{{ .SYSTEM }}-{{ .ENV }}-necro'
+    CHANGE_SET_NAME: 'cs-{{ .RUN_ID }}'
+    TRUSTED_ACCOUNT_ID: '123456789012'
+
+  # profiles:
+  #   COM_PRD:
+  #     SYSTEM: com
+  #     ENV: prd
 
 cmd:
   ## S3バケット(一覧)
   # - name: s3-bucket-list
   #   aws: ["s3api", "list-buckets"]
-
-  ## S3バケット(作成)
-  # - name: s3-bucket-create
-  #   aws:
-  #     [
-  #       "s3api",
-  #       "create-bucket",
-  #       "--bucket",
-  #       "${BUCKET_NAME}",
-  #       "--create-bucket-configuration",
-  #       "LocationConstraint=${REGION}",
-  #     ]
 
   ## S3バケット(確認)
   # - name: s3-bucket-check
@@ -53,9 +49,50 @@ cmd:
   #       "s3api",
   #       "head-bucket",
   #       "--bucket",
-  #       "${BUCKET_NAME}",
+  #       "{{ .BUCKET_NAME }}",
   #     ]
 
+  ## S3バケット(空にする)
+  # - name: s3-bucket-empty
+  #   aws:
+  #     [
+  #       "s3",
+  #       "rm",
+  #       "s3://{{ .BUCKET_NAME }}",
+  #       "--recursive"
+  #     ]
+
+  ## S3バケット(削除)
+  # - name: s3-bucket-delete
+  #   aws:
+  #     [
+  #       "s3api",
+  #       "delete-bucket",
+  #       "--bucket",
+  #       "{{ .BUCKET_NAME }}"
+  #     ]
+
+  ## S3バケット(作成)
+  # - name: s3-bucket-create
+  #   aws:
+  #     [
+  #       "s3api",
+  #       "create-bucket",
+  #       "--bucket",
+  #       "{{ .BUCKET_NAME }}",
+  #       "--create-bucket-configuration",
+  #       "LocationConstraint={{ .REGION }}",
+  #     ]
+
+  ## S3オブジェクト(ツリー風)
+  # - name: s3-tree
+  #   aws:
+  #     [
+  #       "s3",
+  #       "ls",
+  #       "s3://{{ .BUCKET_NAME }}",
+  #       "--recursive"
+  #     ]
 
   ## S3オブジェクト(DELETE)
   # - name: s3-delete-object
@@ -64,9 +101,9 @@ cmd:
   #       "s3api",
   #       "delete-object",
   #       "--bucket",
-  #       "${BUCKET_NAME}",
+  #       "{{ .BUCKET_NAME }}",
   #       "--key",
-  #       "${CFN_REMOTE}",
+  #       "{{ .CFN_REMOTE }}",
   #     ]
 
   ## S3オブジェクト(PUT)
@@ -75,10 +112,9 @@ cmd:
   #     [
   #       "s3",
   #       "cp",
-  #       "${CFN_LOCAL}",
-  #       "s3://${BUCKET_NAME}/${CFN_REMOTE}",
+  #       "{{ .CFN_LOCAL }}",
+  #       "s3://{{ .BUCKET_NAME }}/{{ .CFN_REMOTE }}",
   #     ]
-
 
   ## CFNスタック(削除)
   # - name: stack-delete
@@ -87,7 +123,7 @@ cmd:
   #       "cloudformation",
   #       "delete-stack",
   #       "--stack-name",
-  #       "${STACK_NAME}",
+  #       "{{ .STACK_NAME }}",
   #     ]
   # - name: stack-wait-delete
   #   aws:
@@ -96,7 +132,7 @@ cmd:
   #       "wait",
   #       "stack-delete-complete",
   #       "--stack-name",
-  #       "${STACK_NAME}",
+  #       "{{ .STACK_NAME }}",
   #     ]
 
   ## CFNスタック(作成)
@@ -106,21 +142,21 @@ cmd:
   #       "cloudformation",
   #       "deploy",
   #       "--stack-name",
-  #       "${STACK_NAME}",
+  #       "{{ .STACK_NAME }}",
   #       "--template-file",
-  #       "${CFN_LOCAL}",
+  #       "{{ .CFN_LOCAL }}",
   #       "--capabilities",
   #       "CAPABILITY_NAMED_IAM",
   #       "--parameter-overrides",
-  #       "RoleName=${ROLE_NAME}",
-  #       "BucketName=${BUCKET_NAME}",
-  #       "TrustedAccountId=${TRUSTED_ACCOUNT_ID}"
+  #       "RoleName={{ .ROLE_NAME }}",
+  #       "BucketName={{ .BUCKET_NAME }}",
+  #       "TrustedAccountId={{ .TRUSTED_ACCOUNT_ID }}"
   #     ]
 
   ## CFNスタック.変更セット(全削除)
   # - name: changeset-list
   #   aws:
-  #     ["cloudformation","list-change-sets","--stack-name","${STACK_NAME}"]
+  #     ["cloudformation","list-change-sets","--stack-name","{{ .STACK_NAME }}"]
   #   capture:
   #     CHANGE_SET_NAMES: "Summaries[].ChangeSetName"
 
@@ -133,9 +169,9 @@ cmd:
   #       "cloudformation",
   #       "delete-change-set",
   #       "--stack-name",
-  #       "${STACK_NAME}",
+  #       "{{ .STACK_NAME }}",
   #       "--change-set-name",
-  #       "${CHANGE_SET_NAME}"
+  #       "{{ .CHANGE_SET_NAME }}"
   #     ]
 
   ## CFNスタック(更新※差分なし変更セット自動削除)
@@ -145,22 +181,23 @@ cmd:
   #       "cloudformation",
   #       "create-change-set",
   #       "--stack-name",
-  #       "${STACK_NAME}",
+  #       "{{ .STACK_NAME }}",
   #       "--change-set-name",
-  #       "${CHANGE_SET_NAME}",
+  #       "{{ .CHANGE_SET_NAME }}",
   #       "--change-set-type",
   #       "UPDATE",
   #       "--template-body",
-  #       "file://${CFN_LOCAL}",
+  #       "file://{{ .CFN_LOCAL }}",
   #       "--capabilities",
   #       "CAPABILITY_NAMED_IAM",
   #       "--parameters",
-  #       "ParameterKey=RoleName,ParameterValue=${ROLE_NAME}",
-  #       "ParameterKey=BucketName,ParameterValue=${BUCKET_NAME}",
-  #       "ParameterKey=TrustedAccountId,ParameterValue=${TRUSTED_ACCOUNT_ID}"
+  #       "ParameterKey=RoleName,ParameterValue={{ .ROLE_NAME }}",
+  #       "ParameterKey=BucketName,ParameterValue={{ .BUCKET_NAME }}",
+  #       "ParameterKey=TrustedAccountId,ParameterValue={{ .TRUSTED_ACCOUNT_ID }}"
   #     ]
   #   capture:
   #     CHANGE_SET_ID: "Id"
+
   # - name: stack-update-changeset-wait
   #   aws:
   #     [
@@ -168,15 +205,16 @@ cmd:
   #       "wait",
   #       "change-set-create-complete",
   #       "--change-set-name",
-  #       "${CHANGE_SET_ID}"
+  #       "{{ .CHANGE_SET_ID }}"
   #     ]
+
   # - name: stack-update-changeset-describe
   #   aws:
   #     [
   #       "cloudformation",
   #       "describe-change-set",
   #       "--change-set-name",
-  #       "${CHANGE_SET_ID}"
+  #       "{{ .CHANGE_SET_ID }}"
   #     ]
   #   if:
   #     expr: "Status"
@@ -189,7 +227,7 @@ cmd:
   #           "cloudformation",
   #           "delete-change-set",
   #           "--change-set-name",
-  #           "${CHANGE_SET_ID}"
+  #           "{{ .CHANGE_SET_ID }}"
   #         ]
   #   ng:
   #     - name: stack-update-changeset-exec
@@ -198,7 +236,7 @@ cmd:
   #           "cloudformation",
   #           "execute-change-set",
   #           "--change-set-name",
-  #           "${CHANGE_SET_ID}"
+  #           "{{ .CHANGE_SET_ID }}"
   #         ]
   #     - name: stack-update-wait
   #       aws:
@@ -207,5 +245,5 @@ cmd:
   #           "wait",
   #           "stack-update-complete",
   #           "--stack-name",
-  #           "${STACK_NAME}"
+  #           "{{ .STACK_NAME }}"
   #         ]

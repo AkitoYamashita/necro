@@ -4,7 +4,7 @@ SHELL=/usr/bin/env bash
 ## var
 BASE:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 DATEID:=$(shell date +%Y%m%d%H%M%S)
-VERSION:=v1.0.0
+VERSION:=v2.0.0
 ## README
 .DEFAULT_GOAL := readme
 define README
@@ -27,7 +27,7 @@ build_win:
 build: build_linux build_mac build_win
 dev: build_mac clean run
 clean: ## keep latest 5 log/*.txt and remove older ones
-	ls -1t log/*.txt 2>/dev/null | tail -n +6 | xargs -r rm -f
+	ls -1t log/*.txt 2>/dev/null | tail -n +5 | xargs -r rm -f
 run:
 	./dist/necro conf/task.yml
 release: ## create git tag and push

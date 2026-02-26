@@ -10,27 +10,39 @@ targets:
   exclude:
     - SAMPLE_PROFILE
 
-vars: # build-in var: PROFILE,REGION,ACCOUNT_ID
-  defaults:
+vars: # build-in var: PROFILE, REGION, ACCOUNT_ID, RUN_ID
+  template-resolve-limit: 10
 
-  profiles:
-    COM_PRD:
-      SYSTEM: com
-      ENV: prd
+  defaults:
+    SYSTEM: '{{ (splitList "_" .PROFILE | first | lower) }}'
+    ENV: '{{ (splitList "_" .PROFILE | last | lower) }}'
+
+  # profiles:
+  #   COM_PRD:
+  #     SYSTEM: com
+  #     ENV: prd
 
 cmd:
-  ## 内部で自動実行
-  # - name: check-sts
-  #   aws: ["sts", "get-caller-identity"]
-
-
   ## Organizationsアカウント(一覧)
   - name: organizations_list-accounts
     aws: ["organizations", "list-accounts"]
     out: "./out/org-accounts.json"
   ## Organizationsアカウント一覧->スクリプト加工
   - name: org-account-list-slim
-    sh: "jq '.Accounts | map({Id: .Id, Name: .Name})'"
+    sh: >
+      jq '
+        .Accounts
+        | map(
+            .Name as $name
+            | ($name | split("_")) as $p
+            | {
+                Id: .Id,
+                Name: $name,
+                System: ($p[0] | ascii_downcase),
+                Env: ($p[1] | ascii_downcase)
+              }
+          )
+      '
     in: "./out/org-accounts.json"
     out: "./out/org-account-list.json"
   ## Organizationsアカウント一覧(JSON) -> aws_config.txt生成
@@ -51,22 +63,3 @@ cmd:
       '
     in: "./out/org-account-list.json"
     out: "./out/aws_config.txt"
-  ## org-account-list.json -> necroのvars.profiles 用 YAML 生成
-  - name: org-account-list-to-vars-profiles
-    sh: >
-      jq -r '
-        ["vars:","  profiles:"] +
-        ( .[] |
-          .Name as $name |
-          ($name | split("_")) as $p |
-          ($p[0] | ascii_downcase) as $system |
-          ($p[1] | ascii_downcase) as $env |
-          [
-            "    \($name):",
-            "      SYSTEM: \($system)",
-            "      ENV: \($env)"
-          ]
-        ) | flatten | .[]
-      '
-    in: "./out/org-account-list.json"
-    out: "./out/necro_vars_profiles.yml"

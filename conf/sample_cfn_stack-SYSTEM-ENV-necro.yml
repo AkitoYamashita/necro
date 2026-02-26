@@ -1,10 +1,10 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "necro assume role for artifact bucket access"
+Description: "necro assume role"
 
 Parameters:
   RoleName:
     Type: String
-    Description: "IAM role name (e.g. role-com-prd-necro-assume-role)"
+    Description: "IAM role name (e.g. role-com-prd-necro)"
   BucketName:
     Type: String
     Description: "Artifact bucket name (e.g. s3-com-prd-necro-artifact)"
@@ -26,23 +26,24 @@ Resources:
             Principal:
               AWS: !Sub "arn:aws:iam::${TrustedAccountId}:root"
             Action: "sts:AssumeRole"
+
+      # AWS managed policies (ReadOnly)
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/ReadOnlyAccess"
+
+      # Inline policy (Full access to the specific bucket)
       Policies:
-        - PolicyName: NecroArtifactBucketAccess
+        - PolicyName: NecroBucketFullAccess
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
-              - Sid: ListBucket
+              - Sid: BucketAndObjectsFullAccess
                 Effect: Allow
                 Action:
-                  - "s3:ListBucket"
-                Resource: !Sub "arn:aws:s3:::${BucketName}"
-              - Sid: ObjectRW
-                Effect: Allow
-                Action:
-                  - "s3:GetObject"
-                  - "s3:PutObject"
-                  - "s3:DeleteObject"
-                Resource: !Sub "arn:aws:s3:::${BucketName}/*"
+                  - "s3:*"
+                Resource:
+                  - !Sub "arn:aws:s3:::${BucketName}"
+                  - !Sub "arn:aws:s3:::${BucketName}/*"
 
 Outputs:
   RoleArn:
