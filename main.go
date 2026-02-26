@@ -42,8 +42,10 @@ type Cmd struct {
 	// New:
 	// - aws: AWS CLI subcommand args (necro will prepend aws --profile/--region/--output json ...)
 	// - sh:  Shell command string executed by bash -lc (supports pipes/redirection)
+	// - in:  Optional input file path; content is fed to stdin for sh
 	Aws []string `yaml:"aws,omitempty"`
 	Sh  string   `yaml:"sh,omitempty"`
+	In  string   `yaml:"in,omitempty"`
 
 	// Backward compatible:
 	// - run: treated as aws args (same as aws:)
@@ -409,12 +411,16 @@ func getCallerIdentity(profile, region string) (accountID string, arn string, er
 	return data.Account, data.Arn, "", nil
 }
 
-func runShellAndCapture(script string, w io.Writer) (stdout []byte, err error) {
+func runShellAndCapture(script string, stdinBytes []byte, w io.Writer) (stdout []byte, err error) {
 	cmd := exec.Command("bash", "-lc", script)
 
 	var outBuf bytes.Buffer
 	cmd.Stdout = io.MultiWriter(w, &outBuf)
 	cmd.Stderr = w
+
+	if len(stdinBytes) > 0 {
+		cmd.Stdin = bytes.NewReader(stdinBytes)
+	}
 
 	cmd.Env = append(os.Environ(),
 		"AWS_PAGER=",
@@ -700,8 +706,6 @@ func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region stri
 
 	// ===============================
 	// normal execution
-	// ===============================	// ===============================
-	// normal execution
 	// ===============================
 
 	// Determine command kind (priority: aws -> sh -> run(backward))
@@ -723,6 +727,7 @@ func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region stri
 	// Render
 	var finalArgs []string
 	var renderedSh string
+	var renderedInPath string
 	var err error
 
 	if kind == "aws" {
@@ -740,6 +745,17 @@ func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region stri
 		if reVar.MatchString(renderedSh) {
 			return fmt.Errorf("unresolved variable remains in sh: %s", renderedSh)
 		}
+
+		if strings.TrimSpace(c.In) != "" {
+			renderedInPath, _, err = expandStrict(c.In, ctx)
+			if err != nil {
+				fmt.Fprintf(mw, "❌ CMD NG    | %s | profile=%s (render-in)\n", c.Name, profile)
+				return err
+			}
+			if reVar.MatchString(renderedInPath) {
+				return fmt.Errorf("unresolved variable remains in in: %s", renderedInPath)
+			}
+		}
 	}
 
 	// Dry-run preview
@@ -748,7 +764,11 @@ func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region stri
 		if kind == "aws" {
 			fmt.Fprintln(mw, strings.Join(finalArgs, " "))
 		} else {
-			fmt.Fprintln(mw, renderedSh)
+			if strings.TrimSpace(renderedInPath) != "" {
+				fmt.Fprintf(mw, "cat %s | %s\n", renderedInPath, renderedSh)
+			} else {
+				fmt.Fprintln(mw, renderedSh)
+			}
 		}
 		if strings.TrimSpace(c.Out) != "" {
 			outPath, _, e := expandStrict(c.Out, ctx)
@@ -765,11 +785,22 @@ func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region stri
 
 	runCmdStart := time.Now()
 
+	var stdinBytes []byte
+	if kind == "sh" && strings.TrimSpace(renderedInPath) != "" {
+		b, e := os.ReadFile(renderedInPath)
+		if e != nil {
+			fmt.Fprintf(mw, "❌ IN NG     | %s | profile=%s | path=%s\n", c.Name, profile, renderedInPath)
+			return fmt.Errorf("in read failed: %w", e)
+		}
+		stdinBytes = b
+		fmt.Fprintf(mw, "📥 IN OK     | %s | profile=%s | path=%s\n", c.Name, profile, renderedInPath)
+	}
+
 	var stdout []byte
 	if kind == "aws" {
 		stdout, err = runAWSAndCapture(finalArgs, mw)
 	} else {
-		stdout, err = runShellAndCapture(renderedSh, mw)
+		stdout, err = runShellAndCapture(renderedSh, stdinBytes, mw)
 	}
 
 	runCmdDuration := time.Since(runCmdStart)

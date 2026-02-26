@@ -37,14 +37,13 @@ cmd:
 
   ## Organizationsアカウント(一覧)
   # - name: organizations_list-accounts
-  #   aws: [
-  #     "organizations",
-  #     "list-accounts"
-  #   ]
+  #   aws: ["organizations", "list-accounts"]
   #   out: "./out/${SYSTEM}_org-accounts.json"
   ## Organizationsアカウント一覧->スクリプト加工
-  # - name: org-account-map
-  #   sh: "jq -r '.Accounts | map({(.Id): .Name}) | add' ./out/${SYSTEM}_org-accounts.json > ./out/${SYSTEM}_org-account-map.json"
+  # - name: org-account-list-slim
+  #   sh: "jq '.Accounts | map({Id: .Id, Name: .Name})'"
+  #   in: "./out/${SYSTEM}_org-accounts.json"
+  #   out: "./out/${SYSTEM}_org-account-list.json"
 
 
   ## S3バケット(一覧)
