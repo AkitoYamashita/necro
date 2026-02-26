@@ -1,0 +1,72 @@
+version: 1
+
+defaults:
+  region: ap-northeast-1
+
+targets:
+  profiles: [
+    "COM_PRD"
+  ] # 空なら ~/.aws/config から自動取得
+  exclude:
+    - SAMPLE_PROFILE
+
+vars: # build-in var: PROFILE,REGION,ACCOUNT_ID
+  defaults:
+
+  profiles:
+    COM_PRD:
+      SYSTEM: com
+      ENV: prd
+
+cmd:
+  ## 内部で自動実行
+  # - name: check-sts
+  #   aws: ["sts", "get-caller-identity"]
+
+
+  ## Organizationsアカウント(一覧)
+  - name: organizations_list-accounts
+    aws: ["organizations", "list-accounts"]
+    out: "./out/org-accounts.json"
+  ## Organizationsアカウント一覧->スクリプト加工
+  - name: org-account-list-slim
+    sh: "jq '.Accounts | map({Id: .Id, Name: .Name})'"
+    in: "./out/org-accounts.json"
+    out: "./out/org-account-list.json"
+  ## Organizationsアカウント一覧(JSON) -> aws_config.txt生成
+  - name: org-account-list-to-aws-config
+    sh: >
+      jq -r '
+        .[] |
+        .Name as $name |
+        ($name | split("_")) as $parts |
+        ($parts[0] | ascii_downcase) as $system |
+        ($parts[1] | ascii_downcase) as $env |
+        "[profile \($name)]",
+        "region = ap-northeast-1",
+        "sso_account_id = \(.Id)",
+        "sso_session = AWS_SESSION",
+        "sso_role_name = ps-org-admin-for-\($system)-\($env)",
+        ""
+      '
+    in: "./out/org-account-list.json"
+    out: "./out/aws_config.txt"
+  ## org-account-list.json -> necroのvars.profiles 用 YAML 生成
+  - name: org-account-list-to-vars-profiles
+    sh: >
+      jq -r '
+        ["vars:","  profiles:"] +
+        ( .[] |
+          .Name as $name |
+          ($name | split("_")) as $p |
+          ($p[0] | ascii_downcase) as $system |
+          ($p[1] | ascii_downcase) as $env |
+          [
+            "    \($name):",
+            "      SYSTEM: \($system)",
+            "      ENV: \($env)"
+          ]
+        ) | flatten | .[]
+      '
+    in: "./out/org-account-list.json"
+    out: "./out/necro_vars_profiles.yml"
