@@ -44,6 +44,24 @@ cmd:
   #   sh: "jq '.Accounts | map({Id: .Id, Name: .Name})'"
   #   in: "./out/${SYSTEM}_org-accounts.json"
   #   out: "./out/${SYSTEM}_org-account-list.json"
+  ## Organizationsアカウント一覧(JSON) -> aws_config.txt生成
+  # - name: org-account-list-to-aws-config
+  #   sh: >
+  #     jq -r '
+  #       .[] |
+  #       .Name as $name |
+  #       ($name | split("_")) as $parts |
+  #       ($parts[0] | ascii_downcase) as $system |
+  #       ($parts[1] | ascii_downcase) as $env |
+  #       "[profile \($name)]",
+  #       "region = ap-northeast-1",
+  #       "sso_account_id = \(.Id)",
+  #       "sso_session = AWS_SESSION",
+  #       "sso_role_name = ps-org-admin-for-\($system)-\($env)",
+  #       ""
+  #     '
+  #   in: "./out/${SYSTEM}_org-account-list.json"
+  #   out: "./out/${SYSTEM}_aws_config.txt"
 
 
   ## S3バケット(一覧)
