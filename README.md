@@ -8,14 +8,16 @@ necro（Necromancer）は、複数のAWS SSOプロファイルを横断してAWS
 
 ---
 
-## 🎯 目的（コンセプト）
+## 🎯 コンセプト（v2）
 
-- ~/.aws/config に定義された複数のSSOプロファイルへ一括実行
-- デフォルトリージョンは ap-northeast-1
-- idempotent（冪等）志向を意識した運用
-- 単一バイナリ配布でどこでも実行可能（AWS CLIが必要）
-- JSON出力を前提にした安全な結果評価
-- capture / if / foreach による条件分岐・展開実行
+- ~/.aws/config の複数SSOプロファイルへ一括実行
+- デフォルトリージョン ap-northeast-1
+- Go template + sprig による変数解決
+- 変数は収束するまで反復評価（デフォルト10回）
+- aws / sh 両方テンプレート対象
+- JSON前提の安全な条件分岐
+- capture / if / foreach による展開実行
+- 単一バイナリ配布（AWS CLI v2 が必要）
 
 ---
 
@@ -23,17 +25,17 @@ necro（Necromancer）は、複数のAWS SSOプロファイルを横断してAWS
 
 ### Windows
 
-GitHub Releases から
-
     necro_windows_amd64.exe
 
-をダウンロードして実行。
+をGitHub Releasesからダウンロード。
 
-### Mac（arm64 / Apple Silicon）
+---
+
+### Mac（arm64）
 
     necro_darwin_arm64
 
-をダウンロード後：
+ダウンロード後：
 
     xattr -d com.apple.quarantine necro_darwin_arm64
     chmod +x necro_darwin_arm64
@@ -60,13 +62,22 @@ SSOログインを実施(認証情報のキャッシュで動作するため)：
 
 ---
 
-### 2. task定義を作成
+### 2. sample_task1_startup.yml（プロファイル自動生成）
 
-サンプル：
+    conf/sample_task1_startup.yml
 
-    conf/sample_task.yml
+は、AWS Organizationsのアカウント一覧から
 
-コピーして編集：
+- ~/.aws/config 用 profileブロック
+- necro用 vars.profiles YAML
+
+を生成するサンプルです。
+
+これにより、一部のAWS SSOプロファイル定義を自動生成できます。
+
+---
+
+### 3. task定義作成
 
     cp conf/sample_task.yml conf/task.yml
 
@@ -76,9 +87,7 @@ SSOログインを実施(認証情報のキャッシュで動作するため)：
 
 ---
 
-### 3. 実行
-
-ビルド情報確認：
+### 4. 実行
 
     necro version
 
@@ -94,8 +103,6 @@ SSOログインを実施(認証情報のキャッシュで動作するため)：
 
 ## 🧠 taskファイル構造
 
-### 基本構造
-
     version: 1
 
     defaults:
@@ -106,15 +113,43 @@ SSOログインを実施(認証情報のキャッシュで動作するため)：
       exclude: []
 
     vars:
+      template-resolve-limit: 10
+
       defaults:
         KEY: value
+
       profiles:
         PROFILE_NAME:
           KEY: value
 
     cmd:
       - name: example
-        run: ["s3api","list-buckets"]
+        aws: ["s3api","list-buckets"]
+
+---
+
+## 🧩 テンプレート仕様
+
+necroは Go template + sprig を使用します。
+
+対象：
+
+- vars.defaults
+- vars.profiles
+- aws引数
+- sh
+- out
+- capture後変数
+
+例：PROFILEからSYSTEM/ENV自動導出
+
+    SYSTEM: '{{ (splitList "_" .PROFILE | first | lower) }}'
+    ENV: '{{ (splitList "_" .PROFILE | last  | lower) }}'
+
+例：相互参照
+
+    BUCKET_NAME: 's3-{{ .SYSTEM }}-{{ .ENV }}-artifact'
+    TEMPLATE_URL: 'https://{{ .BUCKET_NAME }}.s3.{{ .REGION }}.amazonaws.com/template.yml'
 
 ---
 
@@ -122,10 +157,10 @@ SSOログインを実施(認証情報のキャッシュで動作するため)：
 
 ### ✔ capture
 
-AWS CLIのJSON出力から値を変数として取得
-
     capture:
       CHANGE_SET_ID: "Id"
+
+capture後もテンプレート変数は再解決されます。
 
 ---
 
@@ -166,39 +201,18 @@ JMESPath式で条件分岐
 
 ## 📋 実行ログ
 
-- log/<RUN_ID>.txt に自動出力
-- STSチェック結果表示
-- 実行時間計測
-- 成功 / 失敗を明示表示
-
----
-
-## 🧹 ログ管理（Makefile例）
-
-    clean_logs: ## keep latest 5 log/*.txt and remove older ones
-        ls -1t log/*.txt 2>/dev/null | tail -n +6 | xargs -r rm -f
-
----
+- log/<RUN_ID>.txt に自動保存
+- STS事前チェック
+- 実行時間表示
+- 成功 / 失敗明示
+- RUN_ID は実行単位で自動生成
 
 ## 🛠 要件
 
 - AWS CLI v2
-- ~/.aws/config に SSO プロファイルが存在
-- SSOセッションが有効
+- ~/.aws/config に SSO プロファイル
+- SSOログイン済み
 
-未ログインの場合：
+未ログイン時：
 
     aws sso login --profile <name>
-
----
-
-## 💀 Philosophy
-
-necroは
-
-- Shell地獄に戻らない
-- jqに依存しない
-- できるだけシンプルに
-- でも十分に強力に
-
-を目指したツールです。
