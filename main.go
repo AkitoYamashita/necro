@@ -40,6 +40,7 @@ type Cmd struct {
 	Name    string            `yaml:"name"`
 	Run     []string          `yaml:"run"`
 	Capture map[string]string `yaml:"capture,omitempty"`
+	Out     string            `yaml:"out,omitempty"`
 
 	If *IfBlock `yaml:"if,omitempty"`
 	Ok []Cmd    `yaml:"ok,omitempty"`
@@ -683,6 +684,13 @@ func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region stri
 	if dryRun {
 		fmt.Fprintf(mw, "🧪 RUN PLAN  | %s | profile=%s\n", c.Name, profile)
 		fmt.Fprintln(mw, strings.Join(finalArgs, " "))
+		if strings.TrimSpace(c.Out) != "" {
+			outPath, _, err := expandStrict(c.Out, ctx)
+			if err != nil {
+				return fmt.Errorf("out path expand failed: %w", err)
+			}
+			fmt.Fprintf(mw, "🧪 OUT PLAN  | %s | profile=%s | path=%s\n", c.Name, profile, outPath)
+		}
 		return nil
 	}
 
@@ -697,6 +705,29 @@ func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region stri
 		return err
 	}
 	fmt.Fprintf(mw, "✅ RUN OK    | %s | profile=%s | duration=%s\n", c.Name, profile, runCmdDuration)
+
+	// out: save raw stdout to file (no formatting)
+	if strings.TrimSpace(c.Out) != "" {
+		outPath, _, e := expandStrict(c.Out, ctx)
+		if e != nil {
+			fmt.Fprintf(mw, "❌ OUT NG    | %s | profile=%s (expand)\n", c.Name, profile)
+			return fmt.Errorf("out path expand failed: %w", e)
+		}
+
+		dir := filepath.Dir(outPath)
+		if dir != "." && dir != "" {
+			if e := os.MkdirAll(dir, 0755); e != nil {
+				fmt.Fprintf(mw, "❌ OUT NG    | %s | profile=%s (mkdir)\n", c.Name, profile)
+				return fmt.Errorf("out mkdir failed: %w", e)
+			}
+		}
+
+		if e := os.WriteFile(outPath, stdout, 0644); e != nil {
+			fmt.Fprintf(mw, "❌ OUT NG    | %s | profile=%s (write)\n", c.Name, profile)
+			return fmt.Errorf("out write failed: %w", e)
+		}
+		fmt.Fprintf(mw, "💾 OUT OK    | %s | profile=%s | path=%s\n", c.Name, profile, outPath)
+	}
 
 	// parse LAST_JSON
 	last, ok := parseJSONOrNil(stdout)
