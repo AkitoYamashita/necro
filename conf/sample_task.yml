@@ -32,23 +32,28 @@ vars: # build-in var: PROFILE,REGION,ACCOUNT_ID
 cmd:
   ## 内部で自動実行
   # - name: check-sts
-  #   run: ["sts", "get-caller-identity"]
+  #   aws: ["sts", "get-caller-identity"]
+
 
   ## Organizationsアカウント(一覧)
   # - name: organizations_list-accounts
-  #   run: [
+  #   aws: [
   #     "organizations",
   #     "list-accounts"
   #   ]
   #   out: "./out/${SYSTEM}_org-accounts.json"
+  ## Organizationsアカウント一覧->スクリプト加工
+  # - name: org-account-map
+  #   sh: "jq -r '.Accounts | map({(.Id): .Name}) | add' ./out/${SYSTEM}_org-accounts.json > ./out/${SYSTEM}_org-account-map.json"
+
 
   ## S3バケット(一覧)
   # - name: s3-bucket-list
-  #   run: ["s3api", "list-buckets"]
+  #   aws: ["s3api", "list-buckets"]
 
   ## S3バケット(作成)
   # - name: s3-bucket-create
-  #   run:
+  #   aws:
   #     [
   #       "s3api",
   #       "create-bucket",
@@ -60,7 +65,7 @@ cmd:
 
   ## S3バケット(確認)
   # - name: s3-bucket-check
-  #   run:
+  #   aws:
   #     [
   #       "s3api",
   #       "head-bucket",
@@ -68,9 +73,10 @@ cmd:
   #       "${BUCKET_NAME}",
   #     ]
 
-  ## CFNテンプレート(DELETE)
+
+  ## S3オブジェクト(DELETE)
   # - name: s3-delete-object
-  #   run:
+  #   aws:
   #     [
   #       "s3api",
   #       "delete-object",
@@ -80,9 +86,9 @@ cmd:
   #       "${CFN_REMOTE}",
   #     ]
 
-  ## CFNテンプレート(PUT)
+  ## S3オブジェクト(PUT)
   # - name: s3-cp
-  #   run:
+  #   aws:
   #     [
   #       "s3",
   #       "cp",
@@ -90,9 +96,10 @@ cmd:
   #       "s3://${BUCKET_NAME}/${CFN_REMOTE}",
   #     ]
 
+
   ## CFNスタック(削除)
   # - name: stack-delete
-  #   run:
+  #   aws:
   #     [
   #       "cloudformation",
   #       "delete-stack",
@@ -100,7 +107,7 @@ cmd:
   #       "${STACK_NAME}",
   #     ]
   # - name: stack-wait-delete
-  #   run:
+  #   aws:
   #     [
   #       "cloudformation",
   #       "wait",
@@ -111,7 +118,7 @@ cmd:
 
   ## CFNスタック(作成)
   # - name: stack-deploy
-  #   run:
+  #   aws:
   #     [
   #       "cloudformation",
   #       "deploy",
@@ -129,7 +136,7 @@ cmd:
 
   ## CFNスタック.変更セット(全削除)
   # - name: changeset-list
-  #   run:
+  #   aws:
   #     ["cloudformation","list-change-sets","--stack-name","${STACK_NAME}"]
   #   capture:
   #     CHANGE_SET_NAMES: "Summaries[].ChangeSetName"
@@ -138,7 +145,7 @@ cmd:
   #   foreach:
   #     var: CHANGE_SET_NAMES
   #     as: CHANGE_SET_NAME
-  #   run:
+  #   aws:
   #     [
   #       "cloudformation",
   #       "delete-change-set",
@@ -150,7 +157,7 @@ cmd:
 
   ## CFNスタック(更新※差分なし変更セット自動削除)
   # - name: stack-update-changeset-create
-  #   run:
+  #   aws:
   #     [
   #       "cloudformation",
   #       "create-change-set",
@@ -172,7 +179,7 @@ cmd:
   #   capture:
   #     CHANGE_SET_ID: "Id"
   # - name: stack-update-changeset-wait
-  #   run:
+  #   aws:
   #     [
   #       "cloudformation",
   #       "wait",
@@ -181,7 +188,7 @@ cmd:
   #       "${CHANGE_SET_ID}"
   #     ]
   # - name: stack-update-changeset-describe
-  #   run:
+  #   aws:
   #     [
   #       "cloudformation",
   #       "describe-change-set",
@@ -194,7 +201,7 @@ cmd:
   #     value: "FAILED"
   #   ok:
   #     - name: stack-update-changeset-delete-empty
-  #       run:
+  #       aws:
   #         [
   #           "cloudformation",
   #           "delete-change-set",
@@ -203,7 +210,7 @@ cmd:
   #         ]
   #   ng:
   #     - name: stack-update-changeset-exec
-  #       run:
+  #       aws:
   #         [
   #           "cloudformation",
   #           "execute-change-set",
@@ -211,7 +218,7 @@ cmd:
   #           "${CHANGE_SET_ID}"
   #         ]
   #     - name: stack-update-wait
-  #       run:
+  #       aws:
   #         [
   #           "cloudformation",
   #           "wait",
