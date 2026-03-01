@@ -106,6 +106,12 @@ description = "cloudformation operation"
 script_runner = "bash"
 script = "./dist/necro conf/sample_cfn/cfn_operation.yml"
 
+[tasks.com]
+dependencies = ["clean","build"]
+description = "com account operation"
+script_runner = "bash"
+script = "./dist/necro conf/sample_com/com_operation.yml"
+
 [tasks.run]
 dependencies = ["clean","build_mac"]
 description = "Run necro with main config"
