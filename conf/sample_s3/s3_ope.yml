@@ -48,14 +48,14 @@ cmd:
   #     ]
 
   ## S3オブジェクト(ツリー風)
-  - name: s3-tree
-    aws:
-      [
-        "s3",
-        "ls",
-        "s3://{{ .BUCKET_NAME }}",
-        "--recursive"
-      ]
+  # - name: s3-tree
+  #   aws:
+  #     [
+  #       "s3",
+  #       "ls",
+  #       "s3://{{ .BUCKET_NAME }}",
+  #       "--recursive"
+  #     ]
 
   ## S3バケット(空にする)
   # - name: s3-bucket-empty
@@ -102,11 +102,11 @@ cmd:
   #     ]
 
   ## S3オブジェクト(PUT)
-  - name: s3-cp
-    aws:
-      [
-        "s3",
-        "cp",
-        "{{ .CFN_LOCAL }}",
-        "s3://{{ .BUCKET_NAME }}/{{ .CFN_REMOTE }}",
-      ]
+  # - name: s3-cp
+  #   aws:
+  #     [
+  #       "s3",
+  #       "cp",
+  #       "{{ .CFN_LOCAL }}",
+  #       "s3://{{ .BUCKET_NAME }}/{{ .CFN_REMOTE }}",
+  #     ]
