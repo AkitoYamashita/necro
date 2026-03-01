@@ -166,14 +166,14 @@ func main() {
 	for _, profile := range profiles {
 		accountID, _, errText, e := getCallerIdentity(profile, region)
 		if e != nil {
-			fmt.Fprintf(mw, "❌ STS NG   | profile=%s\n", profile)
+			fmt.Fprintf(mw, "❌ STS | profile=%s\n", profile)
 			if errText != "" {
 				fmt.Fprintf(mw, "   stderr  | %s\n", errText)
 			}
 			die(e)
 		}
 
-		fmt.Fprintf(mw, "🔐 STS OK   | profile=%s | account=%s\n", profile, accountID)
+		fmt.Fprintf(mw, "🔐 STS | profile=%s | account=%s\n", profile, accountID)
 
 		ctx := map[string]string{
 			"PROFILE":    profile,
@@ -693,7 +693,7 @@ func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region stri
 	}
 
 	// Execute
-	fmt.Fprintf(mw, "▶️  RUN       | %s | profile=%s\n", c.Name, profile)
+	fmt.Fprintf(mw, "▶️  RUN | %s | profile=%s\n", c.Name, profile)
 
 	runCmdStart := time.Now()
 
