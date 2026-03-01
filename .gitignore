@@ -1,10 +1,7 @@
 # .gitignore
 
-/makers
-/makers.exe
-
-/conf/*
-!/conf/sample*
+/conf/**
+!/conf/sample**
 
 /dist/*
 !/dist/.gitkeep
@@ -12,6 +9,14 @@
 /log/*
 !/log/.gitkeep
 
+## cargo-make
+/makers
+/makers.exe
+
+## generated aws config file
+**/aws_config.txt
+
+## vscode settings
 /.vscode
 
 # If you prefer the allow list template instead of the deny list, see community template:

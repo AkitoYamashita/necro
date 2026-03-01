@@ -26,11 +26,27 @@ cmd:
   ## Organizationsアカウント(一覧)
   - name: organizations_list-accounts
     aws: ["organizations", "list-accounts"]
-    out: "./out/org-accounts.json"
-  ## Organizationsアカウント一覧(JSON) -> sample_aws_config と結合して aws_config.txt生成
+    out: "./out/{{ .PROFILE }}/org-accounts.json"
+  ## Organizationsアカウント一覧 -> NDJSON（1アカウント1行）に整形
+  - name: org-account-list-slim
+    sh: >
+      jq -c '
+        .Accounts[]
+        | .Name as $name
+        | ($name | split("_")) as $p
+        | {
+            profile: $name,
+            account_id: .Id,
+            system: ($p[0] | ascii_downcase),
+            env: ($p[1] | ascii_downcase)
+          }
+      '
+    in: "./out/{{ .PROFILE }}/org-accounts.json"
+    out: "./out/{{ .PROFILE }}/org-account-list.jsonl"
+  ## Organizationsアカウント一覧(JSON) -> aws_config_template.txt と結合して aws_config.txt生成
   - name: org-account-list-to-aws-config
     sh: >
-      cat conf/sample_aws_config;
+      cat conf/sample_aws_config/aws_config_template.txt;
       echo "";
       echo ";; GENERATED CODE DO NOT DELETE";
       echo "";
@@ -54,21 +70,7 @@ cmd:
           "sso_role_name = ps-org-admin-for-\(.System)-\(.Env)",
           ""
       '
-    in: "./out/org-accounts.json"
+    in: "./out/{{ .PROFILE }}/org-accounts.json"
     out: "./out/aws_config.txt"
-  ## Organizationsアカウント一覧 -> NDJSON（1アカウント1行）に整形
-  - name: org-account-list-slim
-    sh: >
-      jq -c '
-        .Accounts[]
-        | .Name as $name
-        | ($name | split("_")) as $p
-        | {
-            profile: $name,
-            account_id: .Id,
-            system: ($p[0] | ascii_downcase),
-            env: ($p[1] | ascii_downcase)
-          }
-      '
-    in: "./out/org-accounts.json"
-    out: "./out/org-account-list.jsonl"
+    # out: "./conf/sample_aws_config/aws_config.txt"
+  

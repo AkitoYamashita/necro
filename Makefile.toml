@@ -1,5 +1,5 @@
 [config]
-# これが肝: cargo-make の内蔵(core)タスクを無効化して Rust 前提の挙動を消す
+## cargo-make の内蔵(core)タスクを無効化して Rust 前提の挙動を消す
 skip_core_tasks = true
 
 [env]
@@ -57,10 +57,20 @@ description = "Keep latest 5 log/*.txt and remove older ones"
 script_runner = "bash"
 script = "ls -1t log/*.txt 2>/dev/null | tail -n +6 | xargs -r rm -f"
 
+[tasks.version]
+description = "Run necro"
+script_runner = "bash"
+script = "./dist/necro version"
+
 [tasks.run]
 description = "Run necro"
 script_runner = "bash"
-script = "./dist/necro conf/task.yml"
+script = "./dist/necro conf/necro.yml"
+
+[tasks.aws_config_generate]
+description = "Run necro"
+script_runner = "bash"
+script = "./dist/necro conf/sample_aws_config/aws_config_generate.yml"
 
 [tasks.dev]
 description = "Build mac, clean logs, run"

@@ -233,7 +233,7 @@ func main() {
 }
 
 func parseArgs(args []string) (cfgPath string, dryRun bool) {
-	// usage: necro <config-file> [--dry-run]
+	// usage: necro <yml-file> [--dry-run]
 	// accept --dry-run anywhere after program name
 	for i := 1; i < len(args); i++ {
 		if args[i] == "--dry-run" {
@@ -252,7 +252,7 @@ func usage() {
 	fmt.Println("")
 	fmt.Println("Usage:")
 	fmt.Println("  necro version")
-	fmt.Println("  necro <config-file> [--dry-run]")
+	fmt.Println("  necro <yml-file> [--dry-run]")
 }
 
 func confirmProceed() bool {
