@@ -15,23 +15,43 @@ description = "Show available tasks"
 script_runner = "bash"
 script = '''
 echo "--- Task List ---"
-echo "  ./makers readme      # show this list"
-echo "  ./makers sso_login   # aws sso login --profile COM_PRD"
-echo "  ./makers build       # build linux/mac/win into dist/"
-echo "  ./makers build_mac   # build host binary into dist/"
-echo "  ./makers build_linux # build linux amd64 into dist/"
-echo "  ./makers build_win   # build windows amd64 into dist/"
-echo "  ./makers clean       # keep latest 5 log/*.txt"
-echo "  ./makers run         # run ./dist/necro conf/task.yml"
-echo "  ./makers dev         # build_mac + clean + run"
-echo "  ./makers release     # git tag+push (VERSION env)"
-echo "  ./makers unrelease   # delete git tag+push"
+
+# 1) [tasks.<name>] を列挙
+grep -E '^\[tasks\.[A-Za-z0-9_-]+\]$' Makefile.toml \
+  | sed -E 's/^\[tasks\.([A-Za-z0-9_-]+)\]$/\1/' \
+  | grep -v '^default$' \
+  | while read -r t; do
+      # 2) 同タスクブロック内の description を拾う（無ければ空）
+      d="$(
+        awk -v task="$t" '
+          $0 ~ ("^\\[tasks\\." task "\\]$") { flag=1; next }
+          flag && $0 ~ "^\\[" { exit }
+          flag && $0 ~ "^description[[:space:]]*=" {
+            sub(/^description[[:space:]]*=[[:space:]]*/, "", $0)
+            gsub(/^[[:space:]]*"/, "", $0)
+            gsub(/"[[:space:]]*$/, "", $0)
+            print $0
+            exit
+          }
+        ' Makefile.toml
+      )"
+      if [ -n "$d" ]; then
+        printf "  %-20s # %s\n" "$t" "$d"
+      else
+        printf "  %s\n" "$t"
+      fi
+    done
 '''
 
 [tasks.sso_login]
 description = "AWS SSO login (COM_PRD)"
 script_runner = "bash"
 script = "aws sso login --profile COM_PRD"
+
+[tasks.clean]
+description = "Keep latest 4 log/*.txt and remove older ones"
+script_runner = "bash"
+script = "ls -1t log/*.txt 2>/dev/null | tail -n +5 | xargs -r rm -f"
 
 [tasks.build_linux]
 description = "Build linux amd64"
@@ -52,30 +72,6 @@ script = "mkdir -p dist; GOOS=windows GOARCH=amd64 go build -ldflags \"-s -w -X 
 description = "Build all (linux/mac/win)"
 dependencies = ["build_linux", "build_mac", "build_win"]
 
-[tasks.clean]
-description = "Keep latest 5 log/*.txt and remove older ones"
-script_runner = "bash"
-script = "ls -1t log/*.txt 2>/dev/null | tail -n +6 | xargs -r rm -f"
-
-[tasks.version]
-description = "Run necro"
-script_runner = "bash"
-script = "./dist/necro version"
-
-[tasks.run]
-description = "Run necro"
-script_runner = "bash"
-script = "./dist/necro conf/necro.yml"
-
-[tasks.aws_config_generate]
-description = "Run necro"
-script_runner = "bash"
-script = "./dist/necro conf/sample_aws_config/aws_config_generate.yml"
-
-[tasks.dev]
-description = "Build mac, clean logs, run"
-dependencies = ["build_mac", "clean", "run"]
-
 [tasks.release]
 description = "Create git tag and push"
 script_runner = "bash"
@@ -85,3 +81,36 @@ script = "git tag ${VERSION}; git push origin ${VERSION}"
 description = "Delete git tag and push"
 script_runner = "bash"
 script = "git tag -d ${VERSION}; git push origin :refs/tags/${VERSION}"
+
+[tasks.version]
+dependencies = ["clean"]
+description = "Show necro version"
+script_runner = "bash"
+script = "./dist/necro version"
+
+[tasks.run]
+dependencies = ["clean"]
+description = "Run necro with main config"
+script_runner = "bash"
+script = "./dist/necro conf/necro.yml"
+
+[tasks.config]
+dependencies = ["clean"]
+description = "Generate aws_config.txt from Organizations accounts"
+script_runner = "bash"
+script = "./dist/necro conf/sample_aws_config/aws_config_generate.yml"
+
+[tasks.s3]
+dependencies = ["clean"]
+description = "s3bucket operation"
+script_runner = "bash"
+script = "./dist/necro conf/sample_s3/s3_ope.yml"
+
+[tasks.cfn]
+description = "cloudformation operation"
+script_runner = "bash"
+script = "./dist/necro conf/sample_cfn/cfn_operation.yml"
+
+[tasks.dev]
+description = "Build mac, clean logs, run"
+dependencies = ["build_mac", "clean", "run"]

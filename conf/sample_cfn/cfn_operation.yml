@@ -21,12 +21,8 @@ vars: # build-in var: PROFILE, REGION, ACCOUNT_ID, RUN_ID
     ## s3-bucket
     BUCKET_NAME: 's3-{{ .SYSTEM }}-{{ .ENV }}-necro-artifact'
 
-    ## s3-file
-    CFN_LOCAL: 'conf/cfn_stack-SYSTEM-ENV-necro.yml'
-    CFN_REMOTE: 'stack-{{ .SYSTEM }}-{{ .ENV }}-necro.yml'
-
     ## cfn-stack
-    TEMPLATE_URL: 'https://{{ .BUCKET_NAME }}.s3.{{ .REGION }}.amazonaws.com/{{ .CFN_REMOTE }}'
+    CFN_LOCAL: 'conf/sample_cfn/cfn_stack-SYSTEM-ENV-necro.yml'
     STACK_NAME: 'stack-{{ .SYSTEM }}-{{ .ENV }}-necro'
     ROLE_NAME: 'role-{{ .SYSTEM }}-{{ .ENV }}-necro'
     CHANGE_SET_NAME: 'cs-{{ .RUN_ID }}'
