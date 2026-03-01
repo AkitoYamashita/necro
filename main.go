@@ -198,13 +198,6 @@ func main() {
 
 	// ---------- Execute cmd by cmd ----------
 	for _, c := range cfg.Cmd {
-
-		if dryRun {
-			fmt.Fprintf(mw, "\n🧪 CMD PLAN  | %s\n", c.Name)
-		} else {
-			fmt.Fprintf(mw, "\n🚀 CMD START | %s\n", c.Name)
-		}
-
 		for _, profile := range profiles {
 			// profileごとにctxは独立させる（captureで汚染しない）
 			ctx := ctxByProfile[profile]
@@ -216,20 +209,15 @@ func main() {
 				die(err)
 			}
 		}
-
-		if dryRun {
-			fmt.Fprintf(mw, "🧪 CMD DONE  | %s\n", c.Name)
-		} else {
-			fmt.Fprintf(mw, "🚀 CMD OK    | %s\n", c.Name)
-		}
 	}
 
 	// ---------- Global end ----------
 	runEnd := time.Now()
 	totalDuration := runEnd.Sub(runStart)
-
-	fmt.Fprintf(mw, "\n🏁 END      | %s\n", runEnd.Format(time.RFC3339))
-	fmt.Fprintf(mw, "⏱️  TOTAL    | %s\n", totalDuration)
+	fmt.Fprintf(mw, "\nEND | %s | TOTAL %s\n",
+		runEnd.Format(time.RFC3339),
+		totalDuration,
+	)
 }
 
 func parseArgs(args []string) (cfgPath string, dryRun bool) {
@@ -733,7 +721,6 @@ func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region stri
 		fmt.Fprintf(mw, "❌ RUN NG    | %s | profile=%s | duration=%s\n", c.Name, profile, runCmdDuration)
 		return err
 	}
-	fmt.Fprintf(mw, "✅ RUN OK    | %s | profile=%s | duration=%s\n", c.Name, profile, runCmdDuration)
 
 	// out: save raw stdout to file (no formatting)
 	if strings.TrimSpace(c.Out) != "" {
