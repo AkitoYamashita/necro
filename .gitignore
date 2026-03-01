@@ -1,5 +1,8 @@
 # .gitignore
 
+/makers
+/makers.exe
+
 /conf/*
 !/conf/sample*
 

@@ -1,0 +1,77 @@
+[config]
+# これが肝: cargo-make の内蔵(core)タスクを無効化して Rust 前提の挙動を消す
+skip_core_tasks = true
+
+[env]
+VERSION = "v2.0.0"
+NECRO_VERSION = "dev"
+
+[tasks.default]
+description = "Default: show task list"
+dependencies = ["readme"]
+
+[tasks.readme]
+description = "Show available tasks"
+script_runner = "bash"
+script = '''
+echo "--- Task List ---"
+echo "  ./makers readme      # show this list"
+echo "  ./makers sso_login   # aws sso login --profile COM_PRD"
+echo "  ./makers build       # build linux/mac/win into dist/"
+echo "  ./makers build_mac   # build host binary into dist/"
+echo "  ./makers build_linux # build linux amd64 into dist/"
+echo "  ./makers build_win   # build windows amd64 into dist/"
+echo "  ./makers clean       # keep latest 5 log/*.txt"
+echo "  ./makers run         # run ./dist/necro conf/task.yml"
+echo "  ./makers dev         # build_mac + clean + run"
+echo "  ./makers release     # git tag+push (VERSION env)"
+echo "  ./makers unrelease   # delete git tag+push"
+'''
+
+[tasks.sso_login]
+description = "AWS SSO login (COM_PRD)"
+script_runner = "bash"
+script = "aws sso login --profile COM_PRD"
+
+[tasks.build_linux]
+description = "Build linux amd64"
+script_runner = "bash"
+script = "mkdir -p dist; GOOS=linux GOARCH=amd64 go build -ldflags \"-s -w -X main.version=${NECRO_VERSION} -X main.commit=$(git rev-parse --short HEAD) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" -o dist/necro_linux_amd64 ."
+
+[tasks.build_mac]
+description = "Build mac (host)"
+script_runner = "bash"
+script = "mkdir -p dist; go build -ldflags \"-s -w -X main.version=${NECRO_VERSION} -X main.commit=$(git rev-parse --short HEAD) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" -o dist/necro ."
+
+[tasks.build_win]
+description = "Build windows amd64"
+script_runner = "bash"
+script = "mkdir -p dist; GOOS=windows GOARCH=amd64 go build -ldflags \"-s -w -X main.version=${NECRO_VERSION} -X main.commit=local -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" -o dist/necro_windows_amd64.exe ."
+
+[tasks.build]
+description = "Build all (linux/mac/win)"
+dependencies = ["build_linux", "build_mac", "build_win"]
+
+[tasks.clean]
+description = "Keep latest 5 log/*.txt and remove older ones"
+script_runner = "bash"
+script = "ls -1t log/*.txt 2>/dev/null | tail -n +6 | xargs -r rm -f"
+
+[tasks.run]
+description = "Run necro"
+script_runner = "bash"
+script = "./dist/necro conf/task.yml"
+
+[tasks.dev]
+description = "Build mac, clean logs, run"
+dependencies = ["build_mac", "clean", "run"]
+
+[tasks.release]
+description = "Create git tag and push"
+script_runner = "bash"
+script = "git tag ${VERSION}; git push origin ${VERSION}"
+
+[tasks.unrelease]
+description = "Delete git tag and push"
+script_runner = "bash"
+script = "git tag -d ${VERSION}; git push origin :refs/tags/${VERSION}"
