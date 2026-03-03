@@ -12,6 +12,8 @@
 ## cargo-make
 /makers
 /makers.exe
+/cargo-make.zip
+/cargo-make/**
 
 ## generated aws config file
 **/aws_config.txt
