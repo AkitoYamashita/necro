@@ -19,7 +19,7 @@ vars: # build-in var: PROFILE, REGION, ACCOUNT_ID, RUN_ID
     ENV: '{{ (splitList "_" .PROFILE | last  | lower) }}'
 
     ## s3-bucket
-    BUCKET_NAME: 's3-{{ .SYSTEM }}-{{ .ENV }}-reference'
+    BUCKET_NAME: 's3-reference'
 
 cmd:
   ## S3バケットに再帰処理でファイルアップロード
@@ -28,8 +28,8 @@ cmd:
       [
         "s3",
         "cp",
-        "./out/s3api_list-buckets/",
-        "s3://s3-{{ .SYSTEM }}-{{ .ENV }}-reference/s3api_list-buckets/",
+        "./out/reference/",
+        "s3://{{ .BUCKET_NAME }}/",
         '--recursive',
         '--exclude',
         '"*"',

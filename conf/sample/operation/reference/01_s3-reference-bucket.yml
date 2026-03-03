@@ -19,11 +19,11 @@ vars: # build-in var: PROFILE, REGION, ACCOUNT_ID, RUN_ID
     ENV: '{{ (splitList "_" .PROFILE | last  | lower) }}'
 
     ## s3-bucket
-    BUCKET_NAME: 's3-{{ .SYSTEM }}-{{ .ENV }}-reference'
+    BUCKET_NAME: 's3-reference'
 
 cmd:
 
-  # S3バケット(作成)
+  # ## S3バケット(作成)
   # - name: s3-bucket-create
   #   aws:
   #     [
@@ -39,15 +39,15 @@ cmd:
   - name: s3-bucket-list
     aws: ["s3api", "list-buckets"]
 
-  ## S3バケット(確認)
-  - name: s3-bucket-check
-    aws:
-      [
-        "s3api",
-        "head-bucket",
-        "--bucket",
-        "{{ .BUCKET_NAME }}",
-      ]
+  # ## S3バケット(確認)
+  # - name: s3-bucket-check
+  #   aws:
+  #     [
+  #       "s3api",
+  #       "head-bucket",
+  #       "--bucket",
+  #       "{{ .BUCKET_NAME }}",
+  #     ]
 
   ## S3オブジェクト(ツリー風)
   - name: s3-tree
@@ -59,7 +59,7 @@ cmd:
         "--recursive"
       ]
 
-  ## S3バケット(空にする)
+  # ## S3バケット(空にする)
   # - name: s3-bucket-empty
   #   aws:
   #     [
