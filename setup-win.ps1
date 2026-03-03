@@ -1,4 +1,4 @@
-## 実行コマンド: `powershell -ExecutionPolicy Bypass .\setup-win.ps1`
+## 実行コマンド: powershell -ExecutionPolicy Bypass .\setup-win.ps1
 $ErrorActionPreference = "Stop"
 
 $Out = Join-Path (Get-Location) "makers.exe"
@@ -13,17 +13,26 @@ try {
 
 	Expand-Archive -Path $zip -DestinationPath $tmp -Force
 
-	# zip内の makers.exe を探す
-	$bin = Get-ChildItem -Path $tmp -Recurse -File | Where-Object { $_.Name -eq "makers.exe" } | Select-Object -First 1
-	if (-not $bin) { throw "makers.exe not found in zip" }
+	# zip内のバイナリを探す（cargo-make.exe優先、なければmakers.exe）
+	$bin = Get-ChildItem -Path $tmp -Recurse -File |
+		Where-Object { $_.Name -in @("cargo-make.exe", "makers.exe") } |
+		Sort-Object { if ($_.Name -eq "cargo-make.exe") { 0 } else { 1 } } |
+		Select-Object -First 1
+
+	if (-not $bin) {
+		Write-Host "debug: files in temp dir:" -ForegroundColor Yellow
+		Get-ChildItem -Path $tmp -Recurse -File | Select-Object FullName | Format-Table -AutoSize
+		throw "cargo-make.exe / makers.exe not found in zip (maybe removed by Defender/EDR?)"
+	}
 
 	Copy-Item -Force $bin.FullName $Out
 
 	New-Item -ItemType Directory -Force -Path dist, log, out | Out-Null
 
-	Write-Host "installed: $Out"
+	Write-Host "installed: $Out (from: $($bin.FullName))"
+	Write-Host "try: .\makers.exe --version"
 	Write-Host "try: .\makers.exe --list-all-steps"
 }
 finally {
-	Remove-Item -Recurse -Force $tmp
+	Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
 }
