@@ -1,32 +1,35 @@
 ## 実行: powershell -ExecutionPolicy Bypass .\setup-win.ps1
 $ErrorActionPreference = "Stop"
 
-$Version = "0.37.24"
-$Url = "https://github.com/sagiegurari/cargo-make/releases/download/$Version/cargo-make-v$Version-x86_64-pc-windows-msvc.zip"
+$Url = "https://github.com/sagiegurari/cargo-make/releases/download/0.37.24/cargo-make-v0.37.24-x86_64-pc-windows-msvc.zip"
 
 $Zip = "cargo-make.zip"
 $Dir = "cargo-make"
+$Out = "makers.exe"
 
+# 1) zip なければ DL
 if (-not (Test-Path $Zip)) {
 	Write-Host "download..."
 	Invoke-WebRequest -Uri $Url -OutFile $Zip
 }
 
+# 2) 解凍ディレクトリなければ 解凍（固定ディレクトリに展開）
 if (-not (Test-Path $Dir)) {
 	Write-Host "extract..."
-	Expand-Archive -Path $Zip -DestinationPath $Dir
+	New-Item -ItemType Directory -Force -Path $Dir | Out-Null
+	Expand-Archive -Path $Zip -DestinationPath $Dir -Force
 }
 
-Write-Host "done."
-Write-Host "binary:"
-Write-Host ".\$Dir\cargo-make-v$Version-x86_64-pc-windows-msvc\cargo-make.exe"
+# 3) exe を探して直下に makers.exe としてコピー（構造依存しない）
+$Bin = Get-ChildItem -Path $Dir -Recurse -File |
+	Where-Object { $_.Name -in @("cargo-make.exe", "makers.exe") } |
+	Sort-Object { if ($_.Name -eq "cargo-make.exe") { 0 } else { 1 } } |
+	Select-Object -First 1
 
-# バイナリを makers.exe としてコピー
-$Exe = ".\$Dir\cargo-make-v$Version-x86_64-pc-windows-msvc\cargo-make.exe"
+if (-not $Bin) { throw "cargo-make.exe / makers.exe not found under .\$Dir" }
 
-if (Test-Path $Exe) {
-	Copy-Item -Force $Exe ".\makers.exe"
-	Write-Host "installed: .\makers.exe"
-} else {
-	Write-Host "cargo-make.exe not found: $Exe"
-}
+Copy-Item -Force $Bin.FullName $Out
+
+Write-Host "installed: .\$Out (from: $($Bin.FullName))"
+Write-Host "try: .\makers.exe --version"
+Write-Host "try: .\makers.exe --list-all-steps"
