@@ -18,6 +18,9 @@
 ## generated aws config file
 **/aws_config.txt
 
+# tmp files
+/tmp/**
+
 ## vscode settings
 /.vscode
 
