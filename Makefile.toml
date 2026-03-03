@@ -88,32 +88,8 @@ description = "Show necro version"
 script_runner = "bash"
 script = "./dist/necro version"
 
-[tasks.config]
-dependencies = ["clean","build"]
-description = "Generate aws_config.txt from Organizations accounts"
-script_runner = "bash"
-script = "./dist/necro conf/sample_aws_config/aws_config_generate.yml"
-
-[tasks.s3]
-dependencies = ["clean","build"]
-description = "s3bucket operation"
-script_runner = "bash"
-script = "./dist/necro conf/sample_s3/s3_ope.yml"
-
-[tasks.cfn]
-dependencies = ["clean","build"]
-description = "cloudformation operation"
-script_runner = "bash"
-script = "./dist/necro conf/sample_cfn/cfn_operation.yml"
-
-[tasks.com]
-dependencies = ["clean","build"]
-description = "com account operation"
-script_runner = "bash"
-script = "./dist/necro conf/sample_com/com_operation.yml"
-
 [tasks.run]
-dependencies = ["clean","build_mac"]
+dependencies = ["clean","build"]
 description = "Run necro with main config"
 script_runner = "bash"
 script = "./dist/necro conf/necro.yml"

@@ -1,0 +1,256 @@
+version: 1
+
+defaults:
+  region: ap-northeast-1
+
+targets:
+  profiles: # 空なら ~/.aws/config から自動取得
+    [
+      "COM_PRD"
+    ] 
+  exclude:
+    - SAMPLE_PROFILE
+
+vars: # build-in var: PROFILE, REGION, ACCOUNT_ID, RUN_ID
+  # template-resolve-limit: 10
+
+  defaults:
+    SYSTEM: '{{ (splitList "_" .PROFILE | first | lower) }}'
+    ENV: '{{ (splitList "_" .PROFILE | last  | lower) }}'
+
+    ## cfn-stack
+    CFN_LOCAL: 'conf/sample/account/com_prd/stack-SYSTEM-ENV-artifact.yml'
+    STACK_NAME: 'stack-{{ .SYSTEM }}-{{ .ENV }}-artifact'
+    CHANGE_SET_NAME: 'cs-{{ .RUN_ID }}'
+
+    ## s3-bucket
+    BUCKET_NAME: "s3-{{ .SYSTEM }}-{{ .ENV }}-artifact"
+
+    ## s3-file
+    S3_LOCAL: 'conf/sample/account/com_prd/.gitkeep'
+    S3_REMOTE: 'tmp/.gitkeep'
+
+  # profiles:
+  #   COM_PRD:
+  #     SYSTEM: com
+  #     ENV: prd
+
+cmd:
+  ## CFNスタック(作成)
+  # - name: stack-deploy
+  #   aws:
+  #     [
+  #       "cloudformation",
+  #       "deploy",
+  #       "--stack-name",
+  #       "{{ .STACK_NAME }}",
+  #       "--template-file",
+  #       "{{ .CFN_LOCAL }}",
+  #       "--capabilities",
+  #       "CAPABILITY_NAMED_IAM",
+  #       "--parameter-overrides",
+  #       "System={{ .SYSTEM }}",
+  #       "Env={{ .ENV }}",
+  #       "BucketName={{ .BUCKET_NAME }}",
+  #     ]
+
+  ## CFNスタック.変更セット(全削除)
+  # - name: changeset-list
+  #   aws:
+  #     ["cloudformation","list-change-sets","--stack-name","{{ .STACK_NAME }}"]
+  #   capture:
+  #     CHANGE_SET_NAMES: "Summaries[].ChangeSetName"
+  # - name: changeset-delete-all
+  #   foreach:
+  #     var: CHANGE_SET_NAMES
+  #     as: CHANGE_SET_NAME
+  #   aws:
+  #     [
+  #       "cloudformation",
+  #       "delete-change-set",
+  #       "--stack-name",
+  #       "{{ .STACK_NAME }}",
+  #       "--change-set-name",
+  #       "{{ .CHANGE_SET_NAME }}"
+  #     ]
+
+  ## CFNスタック(更新※差分なし変更セット自動削除)
+  # - name: stack-update-changeset-create
+  #   aws:
+  #     [
+  #       "cloudformation",
+  #       "create-change-set",
+  #       "--stack-name",
+  #       "{{ .STACK_NAME }}",
+  #       "--change-set-name",
+  #       "{{ .CHANGE_SET_NAME }}",
+  #       "--change-set-type",
+  #       "UPDATE",
+  #       "--template-body",
+  #       "file://{{ .CFN_LOCAL }}",
+  #       "--capabilities",
+  #       "CAPABILITY_NAMED_IAM",
+  #       "--parameters",
+  #       "ParameterKey=System,ParameterValue={{ .SYSTEM }}",
+  #       "ParameterKey=Env,ParameterValue={{ .ENV }}",
+  #       "ParameterKey=BucketName,ParameterValue={{ .BUCKET_NAME }}",
+  #     ]
+  #   capture:
+  #     CHANGE_SET_ID: "Id"
+  # - name: stack-update-changeset-wait
+  #   aws:
+  #     [
+  #       "cloudformation",
+  #       "wait",
+  #       "change-set-create-complete",
+  #       "--change-set-name",
+  #       "{{ .CHANGE_SET_ID }}"
+  #     ]
+  # - name: stack-update-changeset-describe
+  #   aws:
+  #     [
+  #       "cloudformation",
+  #       "describe-change-set",
+  #       "--change-set-name",
+  #       "{{ .CHANGE_SET_ID }}"
+  #     ]
+  #   if:
+  #     expr: "Status"
+  #     op: "eq"
+  #     value: "FAILED"
+  #   ok:
+  #     - name: stack-update-changeset-delete-empty
+  #       aws:
+  #         [
+  #           "cloudformation",
+  #           "delete-change-set",
+  #           "--change-set-name",
+  #           "{{ .CHANGE_SET_ID }}"
+  #         ]
+  #   ng:
+  #     - name: stack-update-changeset-exec
+  #       aws:
+  #         [
+  #           "cloudformation",
+  #           "execute-change-set",
+  #           "--change-set-name",
+  #           "{{ .CHANGE_SET_ID }}"
+  #         ]
+  #     - name: stack-update-wait
+  #       aws:
+  #         [
+  #           "cloudformation",
+  #           "wait",
+  #           "stack-update-complete",
+  #           "--stack-name",
+  #           "{{ .STACK_NAME }}"
+  #         ]
+
+  ## CFNスタック(削除)
+  # - name: stack-delete
+  #   aws:
+  #     [
+  #       "cloudformation",
+  #       "delete-stack",
+  #       "--stack-name",
+  #       "{{ .STACK_NAME }}",
+  #     ]
+  # - name: stack-wait-delete
+  #   aws:
+  #     [
+  #       "cloudformation",
+  #       "wait",
+  #       "stack-delete-complete",
+  #       "--stack-name",
+  #       "{{ .STACK_NAME }}",
+  #     ]
+
+  ## S3バケット(一覧)
+  # - name: s3-bucket-list
+  #   aws: ["s3api", "list-buckets"]
+
+  ## S3バケット(作成)
+  # - name: s3-bucket-create
+  #   aws:
+  #     [
+  #       "s3api",
+  #       "create-bucket",
+  #       "--bucket",
+  #       "{{ .BUCKET_NAME }}",
+  #       "--create-bucket-configuration",
+  #       "LocationConstraint={{ .REGION }}",
+  #     ]
+
+  ## S3バケット(確認)
+  # - name: s3-bucket-check
+  #   aws:
+  #     [
+  #       "s3api",
+  #       "head-bucket",
+  #       "--bucket",
+  #       "{{ .BUCKET_NAME }}",
+  #     ]
+
+  ## S3バケット(空にする)
+  # - name: s3-bucket-empty
+  #   aws:
+  #     [
+  #       "s3",
+  #       "rm",
+  #       "s3://{{ .BUCKET_NAME }}",
+  #       "--recursive"
+  #     ]
+
+  ## S3バケット(削除)
+  # - name: s3-bucket-delete
+  #   aws:
+  #     [
+  #       "s3api",
+  #       "delete-bucket",
+  #       "--bucket",
+  #       "{{ .BUCKET_NAME }}"
+  #     ]
+
+  ## S3オブジェクト(ツリー風)
+  # - name: s3-tree
+  #   aws:
+  #     [
+  #       "s3",
+  #       "ls",
+  #       "s3://{{ .BUCKET_NAME }}",
+  #       "--recursive"
+  #     ]
+
+  ## S3オブジェクト(GET)
+  # - name: s3-get-object
+  #   aws:
+  #     [
+  #       "s3",
+  #       "cp",
+  #       "s3://{{ .BUCKET_NAME }}/{{ .S3_REMOTE }}",
+  #       "{{ .S3_LOCAL }}",
+  #     ]
+
+  ## S3オブジェクト(PUT + x-amz-meta-run_id)
+  # - name: s3-put-object
+  #   aws:
+  #     [
+  #       "s3",
+  #       "cp",
+  #       "{{ .S3_LOCAL }}",
+  #       "s3://{{ .BUCKET_NAME }}/{{ .S3_REMOTE }}",
+  #       "--metadata",
+  #       "run_id={{ .RUN_ID }}",
+  #     ]
+
+  ## S3オブジェクト(DELETE)
+  # - name: s3-delete-object
+  #   aws:
+  #     [
+  #       "s3api",
+  #       "delete-object",
+  #       "--bucket",
+  #       "{{ .BUCKET_NAME }}",
+  #       "--key",
+  #       "{{ .CFN_REMOTE }}",
+  #     ]

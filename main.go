@@ -606,14 +606,11 @@ func runCmdTreeForProfile(mw io.Writer, dryRun bool, profile string, region stri
 			childCtx := copyMap(ctx)
 			childCtx[c.ForEach.As] = fmt.Sprint(item)
 
-			childCmd := Cmd{
-				Name:    c.Name,
-				Run:     c.Run,
-				Capture: c.Capture,
-				If:      c.If,
-				Ok:      c.Ok,
-				Ng:      c.Ng,
-			}
+			// IMPORTANT:
+			// Copy the entire command so that Aws/Sh/In/Out/Run/etc are preserved.
+			// Only remove ForEach to avoid infinite recursion.
+			childCmd := c
+			childCmd.ForEach = nil
 
 			if err := runCmdTreeForProfile(mw, dryRun, profile, region, templateResolveLimit, childCtx, childCmd); err != nil {
 				return err

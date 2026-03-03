@@ -6,7 +6,7 @@ defaults:
 targets:
   profiles: # 空なら ~/.aws/config から自動取得
     [
-      "COM_PRD"
+      # "COM_PRD"
     ] 
   exclude:
     - SAMPLE_PROFILE
@@ -19,13 +19,11 @@ vars: # build-in var: PROFILE, REGION, ACCOUNT_ID, RUN_ID
     ENV: '{{ (splitList "_" .PROFILE | last  | lower) }}'
 
     ## s3-bucket
-    BUCKET_NAME: 's3-{{ .SYSTEM }}-{{ .ENV }}-necro-artifact'
+    BUCKET_NAME: 's3-{{ .SYSTEM }}-{{ .ENV }}-necro'
 
     ## s3-file
-    # CFN_LOCAL: 'conf/cfn_stack-SYSTEM-ENV-necro.yml'
-    CFN_LOCAL: 'conf/sample_s3/.gitkeep'
-    # CFN_REMOTE: 'stack-{{ .SYSTEM }}-{{ .ENV }}-necro.yml'
-    CFN_REMOTE: 'tmp/.gitkeep'
+    S3_LOCAL: 'conf/sample/aws/s3/.gitkeep'
+    S3_REMOTE: 'tmp/.gitkeep'
 
   # profiles:
   #   COM_PRD:
@@ -37,6 +35,18 @@ cmd:
   - name: s3-bucket-list
     aws: ["s3api", "list-buckets"]
 
+  ## S3バケット(作成)
+  # - name: s3-bucket-create
+  #   aws:
+  #     [
+  #       "s3api",
+  #       "create-bucket",
+  #       "--bucket",
+  #       "{{ .BUCKET_NAME }}",
+  #       "--create-bucket-configuration",
+  #       "LocationConstraint={{ .REGION }}",
+  #     ]
+
   ## S3バケット(確認)
   # - name: s3-bucket-check
   #   aws:
@@ -45,16 +55,6 @@ cmd:
   #       "head-bucket",
   #       "--bucket",
   #       "{{ .BUCKET_NAME }}",
-  #     ]
-
-  ## S3オブジェクト(ツリー風)
-  # - name: s3-tree
-  #   aws:
-  #     [
-  #       "s3",
-  #       "ls",
-  #       "s3://{{ .BUCKET_NAME }}",
-  #       "--recursive"
   #     ]
 
   ## S3バケット(空にする)
@@ -77,16 +77,36 @@ cmd:
   #       "{{ .BUCKET_NAME }}"
   #     ]
 
-  ## S3バケット(作成)
-  # - name: s3-bucket-create
+  ## S3オブジェクト(ツリー風)
+  # - name: s3-tree
   #   aws:
   #     [
-  #       "s3api",
-  #       "create-bucket",
-  #       "--bucket",
-  #       "{{ .BUCKET_NAME }}",
-  #       "--create-bucket-configuration",
-  #       "LocationConstraint={{ .REGION }}",
+  #       "s3",
+  #       "ls",
+  #       "s3://{{ .BUCKET_NAME }}",
+  #       "--recursive"
+  #     ]
+
+  ## S3オブジェクト(GET)
+  # - name: s3-get-object
+  #   aws:
+  #     [
+  #       "s3",
+  #       "cp",
+  #       "s3://{{ .BUCKET_NAME }}/{{ .S3_REMOTE }}",
+  #       "{{ .S3_LOCAL }}",
+  #     ]
+
+  ## S3オブジェクト(PUT + x-amz-meta-run_id)
+  # - name: s3-put-object
+  #   aws:
+  #     [
+  #       "s3",
+  #       "cp",
+  #       "{{ .S3_LOCAL }}",
+  #       "s3://{{ .BUCKET_NAME }}/{{ .S3_REMOTE }}",
+  #       "--metadata",
+  #       "run_id={{ .RUN_ID }}",
   #     ]
 
   ## S3オブジェクト(DELETE)
@@ -99,14 +119,4 @@ cmd:
   #       "{{ .BUCKET_NAME }}",
   #       "--key",
   #       "{{ .CFN_REMOTE }}",
-  #     ]
-
-  ## S3オブジェクト(PUT)
-  # - name: s3-cp
-  #   aws:
-  #     [
-  #       "s3",
-  #       "cp",
-  #       "{{ .CFN_LOCAL }}",
-  #       "s3://{{ .BUCKET_NAME }}/{{ .CFN_REMOTE }}",
   #     ]
