@@ -19,8 +19,8 @@ vars: # build-in var: PROFILE, REGION, ACCOUNT_ID, RUN_ID
     ENV: '{{ (splitList "_" .PROFILE | last  | lower) }}'
 
     ## cfn-stack
-    CFN_LOCAL: 'conf/sample/account/com_prd/stack-SYSTEM-ENV-artifact.yml'
-    STACK_NAME: 'stack-{{ .SYSTEM }}-{{ .ENV }}-artifact'
+    CFN_LOCAL: 'conf/sample/account/com_prd/stack-SYSTEM-ENV.yml'
+    STACK_NAME: 'stack-{{ .SYSTEM }}-{{ .ENV }}'
     CHANGE_SET_NAME: 'cs-{{ .RUN_ID }}'
 
     ## s3-bucket
@@ -75,76 +75,76 @@ cmd:
   #     ]
 
   ## CFNスタック(更新※差分なし変更セット自動削除)
-  # - name: stack-update-changeset-create
-  #   aws:
-  #     [
-  #       "cloudformation",
-  #       "create-change-set",
-  #       "--stack-name",
-  #       "{{ .STACK_NAME }}",
-  #       "--change-set-name",
-  #       "{{ .CHANGE_SET_NAME }}",
-  #       "--change-set-type",
-  #       "UPDATE",
-  #       "--template-body",
-  #       "file://{{ .CFN_LOCAL }}",
-  #       "--capabilities",
-  #       "CAPABILITY_NAMED_IAM",
-  #       "--parameters",
-  #       "ParameterKey=System,ParameterValue={{ .SYSTEM }}",
-  #       "ParameterKey=Env,ParameterValue={{ .ENV }}",
-  #       "ParameterKey=BucketName,ParameterValue={{ .BUCKET_NAME }}",
-  #     ]
-  #   capture:
-  #     CHANGE_SET_ID: "Id"
-  # - name: stack-update-changeset-wait
-  #   aws:
-  #     [
-  #       "cloudformation",
-  #       "wait",
-  #       "change-set-create-complete",
-  #       "--change-set-name",
-  #       "{{ .CHANGE_SET_ID }}"
-  #     ]
-  # - name: stack-update-changeset-describe
-  #   aws:
-  #     [
-  #       "cloudformation",
-  #       "describe-change-set",
-  #       "--change-set-name",
-  #       "{{ .CHANGE_SET_ID }}"
-  #     ]
-  #   if:
-  #     expr: "Status"
-  #     op: "eq"
-  #     value: "FAILED"
-  #   ok:
-  #     - name: stack-update-changeset-delete-empty
-  #       aws:
-  #         [
-  #           "cloudformation",
-  #           "delete-change-set",
-  #           "--change-set-name",
-  #           "{{ .CHANGE_SET_ID }}"
-  #         ]
-  #   ng:
-  #     - name: stack-update-changeset-exec
-  #       aws:
-  #         [
-  #           "cloudformation",
-  #           "execute-change-set",
-  #           "--change-set-name",
-  #           "{{ .CHANGE_SET_ID }}"
-  #         ]
-  #     - name: stack-update-wait
-  #       aws:
-  #         [
-  #           "cloudformation",
-  #           "wait",
-  #           "stack-update-complete",
-  #           "--stack-name",
-  #           "{{ .STACK_NAME }}"
-  #         ]
+  - name: stack-update-changeset-create
+    aws:
+      [
+        "cloudformation",
+        "create-change-set",
+        "--stack-name",
+        "{{ .STACK_NAME }}",
+        "--change-set-name",
+        "{{ .CHANGE_SET_NAME }}",
+        "--change-set-type",
+        "UPDATE",
+        "--template-body",
+        "file://{{ .CFN_LOCAL }}",
+        "--capabilities",
+        "CAPABILITY_NAMED_IAM",
+        "--parameters",
+        "ParameterKey=System,ParameterValue={{ .SYSTEM }}",
+        "ParameterKey=Env,ParameterValue={{ .ENV }}",
+        "ParameterKey=BucketName,ParameterValue={{ .BUCKET_NAME }}",
+      ]
+    capture:
+      CHANGE_SET_ID: "Id"
+  - name: stack-update-changeset-wait
+    aws:
+      [
+        "cloudformation",
+        "wait",
+        "change-set-create-complete",
+        "--change-set-name",
+        "{{ .CHANGE_SET_ID }}"
+      ]
+  - name: stack-update-changeset-describe
+    aws:
+      [
+        "cloudformation",
+        "describe-change-set",
+        "--change-set-name",
+        "{{ .CHANGE_SET_ID }}"
+      ]
+    if:
+      expr: "Status"
+      op: "eq"
+      value: "FAILED"
+    ok:
+      - name: stack-update-changeset-delete-empty
+        aws:
+          [
+            "cloudformation",
+            "delete-change-set",
+            "--change-set-name",
+            "{{ .CHANGE_SET_ID }}"
+          ]
+    ng:
+      - name: stack-update-changeset-exec
+        aws:
+          [
+            "cloudformation",
+            "execute-change-set",
+            "--change-set-name",
+            "{{ .CHANGE_SET_ID }}"
+          ]
+      - name: stack-update-wait
+        aws:
+          [
+            "cloudformation",
+            "wait",
+            "stack-update-complete",
+            "--stack-name",
+            "{{ .STACK_NAME }}"
+          ]
 
   ## CFNスタック(削除)
   # - name: stack-delete

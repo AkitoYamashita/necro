@@ -16,6 +16,8 @@ vars: # build-in var: PROFILE, REGION, ACCOUNT_ID, RUN_ID
   defaults:
     SYSTEM: '{{ (splitList "_" .PROFILE | first | lower) }}'
     ENV: '{{ (splitList "_" .PROFILE | last | lower) }}'
+    AWS_CONFIG_TEMPLATE: "conf/sample/operation/generate_aws_config/aws_config_template.txt"
+    JQ_SSO_ROLE_NAME: 'ps-org-admin-for-\(.System)-\(.Env)'
 
   # profiles:
   #   COM_PRD:
@@ -46,7 +48,7 @@ cmd:
   ## Organizationsアカウント一覧(JSON) -> aws_config_template.txt と結合して aws_config.txt生成
   - name: org-account-list-to-aws-config
     sh: >
-      cat conf/sample_aws_config/aws_config_template.txt;
+      cat {{ .AWS_CONFIG_TEMPLATE }};
       echo "";
       echo ";; GENERATED CODE DO NOT DELETE";
       echo "";
@@ -67,10 +69,9 @@ cmd:
           "region = ap-northeast-1",
           "sso_account_id = \(.Id)",
           "sso_session = AWS_SESSION",
-          "sso_role_name = ps-org-admin-for-\(.System)-\(.Env)",
+          "sso_role_name = {{ .JQ_SSO_ROLE_NAME }}",
           ""
       '
     in: "./out/{{ .PROFILE }}/org-accounts.json"
     out: "./out/aws_config.txt"
-    # out: "./conf/sample_aws_config/aws_config.txt"
   
