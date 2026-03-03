@@ -20,3 +20,13 @@ if (-not (Test-Path $Dir)) {
 Write-Host "done."
 Write-Host "binary:"
 Write-Host ".\$Dir\cargo-make-v$Version-x86_64-pc-windows-msvc\cargo-make.exe"
+
+# バイナリを makers.exe としてコピー
+$Exe = ".\$Dir\cargo-make-v$Version-x86_64-pc-windows-msvc\cargo-make.exe"
+
+if (Test-Path $Exe) {
+	Copy-Item -Force $Exe ".\makers.exe"
+	Write-Host "installed: .\makers.exe"
+} else {
+	Write-Host "cargo-make.exe not found: $Exe"
+}
