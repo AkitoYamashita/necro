@@ -216,3 +216,11 @@ JMESPath式で条件分岐
 未ログイン時：
 
     aws sso login --profile <name>
+
+## TODO
+
+- Cross-platform化（Windowsでも同じtask.ymlが動くようにする）
+  - JSON加工（split/lower/1レコード1行出力）をnecro内蔵化
+  - テンプレ結合生成（aws_configなど）をbuilt-in化
+  - 外部依存（jq/bash）を段階的に排除
+  - 必要に応じてバイナリDLコマンド追加（cargo-make, jq等）
