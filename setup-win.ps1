@@ -1,4 +1,4 @@
-# 未検証スクリプト
+## 実行コマンド: `powershell -ExecutionPolicy Bypass .\setup-win.ps1`
 $ErrorActionPreference = "Stop"
 
 $Out = Join-Path (Get-Location) "makers.exe"
