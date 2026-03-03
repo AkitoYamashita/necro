@@ -18,9 +18,6 @@ vars: # build-in var: PROFILE, REGION, ACCOUNT_ID, RUN_ID
     SYSTEM: '{{ (splitList "_" .PROFILE | first | lower) }}'
     ENV: '{{ (splitList "_" .PROFILE | last  | lower) }}'
 
-    ## s3-bucket
-    BUCKET_NAME: 's3-{{ .SYSTEM }}-{{ .ENV }}-reference'
-
 cmd:
   ## S3バケット(一覧)
   - name: s3-bucket-list

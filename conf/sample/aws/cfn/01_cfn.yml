@@ -24,10 +24,9 @@ vars: # build-in var: PROFILE, REGION, ACCOUNT_ID, RUN_ID
     CHANGE_SET_NAME: 'cs-{{ .RUN_ID }}'
 
     ## cfn-param
-    BUCKET_NAME: 's3-{{ .SYSTEM }}-{{ .ENV }}-artifact'
-    ROLE_NAME: 'role-{{ .SYSTEM }}-{{ .ENV }}-assumable'
+    ROLE_NAME: 'role-{{ .SYSTEM }}-{{ .ENV }}-s3access'
+    BUCKET_NAME: 's3-{{ .SYSTEM }}-{{ .ENV }}-necro-tmp'
     # TRUSTED_ACCOUNT_ID: '123456789012'
-    # TRUSTED_ACCOUNT_ID: ''
 
   # profiles:
   #   COM_PRD:
@@ -76,7 +75,6 @@ cmd:
         "ParameterKey=Env,ParameterValue={{ .ENV }}",
         "ParameterKey=RoleName,ParameterValue={{ .ROLE_NAME }}",
         "ParameterKey=BucketName,ParameterValue={{ .BUCKET_NAME }}",
-        "ParameterKey=TrustedAccountId,ParameterValue={{ .TRUSTED_ACCOUNT_ID }}",
       ]
     capture:
       CHANGE_SET_ID: "Id"

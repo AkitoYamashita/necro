@@ -19,16 +19,21 @@ vars: # build-in var: PROFILE, REGION, ACCOUNT_ID, RUN_ID
     ENV: '{{ (splitList "_" .PROFILE | last  | lower) }}'
 
     ## cfn-stack
-    CFN_LOCAL: 'conf/sample/account/com_prd/stack-SYSTEM-ENV.yml'
-    STACK_NAME: 'stack-{{ .SYSTEM }}-{{ .ENV }}'
+    CFN_LOCAL: 'conf/sample/account/com_prd/stack-com-prd.yml'
+    STACK_NAME: 'stack-com-prd'
     CHANGE_SET_NAME: 'cs-{{ .RUN_ID }}'
+    # TRUSTED_ACCOUNT_ID1: '123456789012'
+    # TRUSTED_ACCOUNT_ID2: '123456789012'
+    # TRUSTED_ACCOUNT_ID3: '123456789012'
+    # TRUSTED_ACCOUNT_ID4: '123456789012'
+    ROLE_NAME: 'role-com-prd-assume'
 
     ## s3-bucket
-    BUCKET_NAME: "s3-{{ .SYSTEM }}-{{ .ENV }}-artifact"
+    BUCKET_NAME: "s3-reference"
 
     ## s3-file
-    S3_LOCAL: 'conf/sample/account/com_prd/.gitkeep'
-    S3_REMOTE: 'tmp/.gitkeep'
+    # S3_LOCAL: 'conf/sample/account/com_prd/.gitkeep'
+    # S3_REMOTE: 'tmp/.gitkeep'
 
   # profiles:
   #   COM_PRD:
@@ -94,6 +99,11 @@ cmd:
         "ParameterKey=System,ParameterValue={{ .SYSTEM }}",
         "ParameterKey=Env,ParameterValue={{ .ENV }}",
         "ParameterKey=BucketName,ParameterValue={{ .BUCKET_NAME }}",
+        "ParameterKey=RoleName,ParameterValue={{ .ROLE_NAME }}",
+        "ParameterKey=TrustedAccountId1,ParameterValue={{ .TRUSTED_ACCOUNT_ID1 }}",
+        "ParameterKey=TrustedAccountId2,ParameterValue={{ .TRUSTED_ACCOUNT_ID2 }}",
+        "ParameterKey=TrustedAccountId3,ParameterValue={{ .TRUSTED_ACCOUNT_ID3 }}",
+        "ParameterKey=TrustedAccountId4,ParameterValue={{ .TRUSTED_ACCOUNT_ID4 }}",
       ]
     capture:
       CHANGE_SET_ID: "Id"

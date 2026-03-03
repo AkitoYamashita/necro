@@ -10,8 +10,14 @@ Parameters:
     Type: String
   BucketName:
     Type: String
-  # TrustedAccountId:
-  #   Type: String
+  TrustedAccountId1:
+    Type: String
+  TrustedAccountId2:
+    Type: String
+  TrustedAccountId3:
+    Type: String
+  TrustedAccountId4:
+    Type: String
 
 Resources:
   NecroS3Bucket:
@@ -44,8 +50,12 @@ Resources:
           - Sid: AllowAssumeFromTrustedRoot
             Effect: Allow
             Principal:
-              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
-              # AWS: !Sub "arn:aws:iam::${TrustedAccountId}:root"
+              AWS: 
+                # - !Sub "arn:aws:iam::${AWS::AccountId}:root"
+                - !Sub "arn:aws:iam::${TrustedAccountId1}:root"
+                - !Sub "arn:aws:iam::${TrustedAccountId2}:root"
+                - !Sub "arn:aws:iam::${TrustedAccountId3}:root"
+                - !Sub "arn:aws:iam::${TrustedAccountId4}:root"
             Action: "sts:AssumeRole"
 
       ## AWS managed policies (ReadOnly)
