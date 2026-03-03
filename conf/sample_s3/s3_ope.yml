@@ -19,7 +19,7 @@ vars: # build-in var: PROFILE, REGION, ACCOUNT_ID, RUN_ID
     ENV: '{{ (splitList "_" .PROFILE | last  | lower) }}'
 
     ## s3-bucket
-    BUCKET_NAME: 's3-{{ .SYSTEM }}-{{ .ENV }}-necro-ref'
+    BUCKET_NAME: 's3-{{ .SYSTEM }}-{{ .ENV }}-necro-artifact'
 
     ## s3-file
     # CFN_LOCAL: 'conf/cfn_stack-SYSTEM-ENV-necro.yml'
