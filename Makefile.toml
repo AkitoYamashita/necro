@@ -5,6 +5,8 @@ skip_core_tasks = true
 [env]
 VERSION = "v2.0.0"
 NECRO_VERSION = "dev"
+NECRO_DIST = "tmp/dist"
+NECRO = "tmp/dist/necro"
 
 [tasks.default]
 description = "Default: show task list"
@@ -51,22 +53,22 @@ script = "aws sso login --profile COM_PRD"
 [tasks.clean]
 description = "Keep latest 4 log/*.txt and remove older ones"
 script_runner = "bash"
-script = "ls -1t log/*.txt 2>/dev/null | tail -n +5 | xargs -r rm -f"
+script = "ls -1t tmp/log/*.txt 2>/dev/null | tail -n +5 | xargs -r rm -f"
 
 [tasks.build_linux]
 description = "Build linux amd64"
 script_runner = "bash"
-script = "mkdir -p dist; GOOS=linux GOARCH=amd64 go build -ldflags \"-s -w -X main.version=${NECRO_VERSION} -X main.commit=$(git rev-parse --short HEAD) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" -o dist/necro_linux_amd64 ."
+script = "mkdir -p ${NECRO_DIST}; GOOS=linux GOARCH=amd64 go build -ldflags \"-s -w -X main.version=${NECRO_VERSION} -X main.commit=$(git rev-parse --short HEAD) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" -o ${NECRO_DIST}/necro_linux_amd64 ."
 
 [tasks.build_mac]
 description = "Build mac (host)"
 script_runner = "bash"
-script = "mkdir -p dist; go build -ldflags \"-s -w -X main.version=${NECRO_VERSION} -X main.commit=$(git rev-parse --short HEAD) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" -o dist/necro ."
+script = "mkdir -p ${NECRO_DIST}; go build -ldflags \"-s -w -X main.version=${NECRO_VERSION} -X main.commit=$(git rev-parse --short HEAD) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" -o ${NECRO_DIST}/necro ."
 
 [tasks.build_win]
 description = "Build windows amd64"
 script_runner = "bash"
-script = "mkdir -p dist; GOOS=windows GOARCH=amd64 go build -ldflags \"-s -w -X main.version=${NECRO_VERSION} -X main.commit=local -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" -o dist/necro_windows_amd64.exe ."
+script = "mkdir -p ${NECRO_DIST}; GOOS=windows GOARCH=amd64 go build -ldflags \"-s -w -X main.version=${NECRO_VERSION} -X main.commit=local -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" -o ${NECRO_DIST}/necro_windows_amd64.exe ."
 
 [tasks.build]
 description = "Build all (linux/mac/win)"
@@ -86,10 +88,10 @@ script = "git tag -d ${VERSION}; git push origin :refs/tags/${VERSION}"
 dependencies = ["clean","build"]
 description = "Show necro version"
 script_runner = "bash"
-script = "./dist/necro version"
+script = "${NECRO} version"
 
 [tasks.run]
 dependencies = ["clean","build"]
 description = "Run necro with main config"
 script_runner = "bash"
-script = "./dist/necro conf/necro.yml"
+script = "${NECRO} conf/necro.yml"

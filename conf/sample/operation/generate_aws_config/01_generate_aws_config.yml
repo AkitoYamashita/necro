@@ -28,7 +28,7 @@ cmd:
   ## Organizationsアカウント(一覧)
   - name: organizations_list-accounts
     aws: ["organizations", "list-accounts"]
-    out: "./out/{{ .PROFILE }}/org-accounts.json"
+    out: "./tmp/out/{{ .PROFILE }}/org-accounts.json"
   ## Organizationsアカウント一覧(JSON) -> aws_config_template.txt と結合して aws_config.txt生成
   - name: org-account-list-to-aws-config
     sh: >
@@ -56,8 +56,8 @@ cmd:
           "sso_role_name = {{ .JQ_SSO_ROLE_NAME }}",
           ""
       '
-    in: "./out/{{ .PROFILE }}/org-accounts.json"
-    out: "./out/aws_config.txt"
+    in: "./tmp/out/{{ .PROFILE }}/org-accounts.json"
+    out: "./tmp/out/aws_config.txt"
   ## Organizationsアカウント一覧 -> NDJSON（1アカウント1行）に整形
   - name: generate-accounts-ndjson
     sh: >
@@ -75,6 +75,6 @@ cmd:
             sso_role_name: ("ps-org-admin-for-\($system)-\($env)")
           }
       '
-    in: "./out/{{ .PROFILE }}/org-accounts.json"
-    out: "./out/accounts.jsonl"
+    in: "./tmp/out/{{ .PROFILE }}/org-accounts.json"
+    out: "./tmp/out/accounts.jsonl"
   

@@ -124,8 +124,9 @@ func main() {
 	// ---------- Log setup ----------
 	runID := newRunID()
 
-	_ = os.MkdirAll("log", 0755)
-	logPath := filepath.Join("log", runID+".txt")
+	logDir := filepath.Join("tmp", "log")
+	_ = os.MkdirAll(logDir, 0755)
+	logPath := filepath.Join(logDir, runID+".txt")
 
 	logFile, err := os.Create(logPath)
 	dieIf(err)

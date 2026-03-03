@@ -3,12 +3,6 @@
 /conf/**
 !/conf/sample**
 
-/dist/*
-!/dist/.gitkeep
-
-/log/*
-!/log/.gitkeep
-
 ## cargo-make
 /makers
 /makers.exe

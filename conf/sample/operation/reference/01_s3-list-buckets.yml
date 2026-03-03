@@ -22,4 +22,4 @@ cmd:
   ## S3バケット(一覧)
   - name: s3-bucket-list
     aws: ["s3api", "list-buckets"]
-    out: "./out/reference/s3api_list-buckets/{{ .PROFILE }}.json"
+    out: "./tmp/out/reference/s3api_list-buckets/{{ .PROFILE }}.json"

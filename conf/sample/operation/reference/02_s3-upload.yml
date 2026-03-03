@@ -28,7 +28,7 @@ cmd:
       [
         "s3",
         "cp",
-        "./out/reference/",
+        "./tmp/out/reference/",
         "s3://{{ .BUCKET_NAME }}/",
         '--recursive',
         '--exclude',
